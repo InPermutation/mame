@@ -56,8 +56,18 @@ private:
 	void icr_w(uint8_t data);
 	uint8_t regs30_r(offs_t offset) { return m_regs30[offset & 0xf]; }
 	void regs30_w(offs_t offset, uint8_t data) { m_regs30[offset & 0xf] = data; }
-	uint8_t regsc0_r(offs_t offset) { return m_regsc0[offset & 3]; }
-	void regsc0_w(offs_t offset, uint8_t data) { m_regsc0[offset & 3] = data; }
+	// Keyboard matrix interface (ports 0xC0-0xC3)
+	// RE findings (KEYBOARD_RE.md): CPU-scanned matrix via discrete latches.
+	// 0xC1 status: bit4=ready, bit5=ERROR (must be 0 or firmware jumps to error handler).
+	// 0xC3 data: 0x00 = no key pressed (test code at 10024:0x9ED5 treats 0x00 as idle).
+	uint8_t kbd_r(offs_t offset) {
+		switch (offset & 3) {
+			case 1: return 0x10;  // status: ready, no error
+			case 3: return 0x00;  // no key pressed
+			default: return 0x00;
+		}
+	}
+	void kbd_w(offs_t offset, uint8_t data) { /* scan pattern uploads ignored */ }
 	uint8_t regs50_r(offs_t offset) { return m_regs50[offset & 0xf]; }
 	void regs50_w(offs_t offset, uint8_t data) { m_regs50[offset & 0xf] = data; }
 
@@ -74,7 +84,6 @@ private:
 	uint8_t m_icr = 0;
 	uint8_t m_regs30[16] = { 0 };
 	uint8_t m_regs50[16] = { 0 };
-	uint8_t m_regsc0[16] = { 0xff, 0xff, 0xff, 0xff };
 };
 
 
@@ -94,7 +103,7 @@ void hp4951b_state::io_map(address_map &map)
 	map(0x0b, 0x0b).r(m_crtc, FUNC(mc6845_device::register_r));
 	map(0x30, 0x3f).rw(FUNC(hp4951b_state::regs30_r), FUNC(hp4951b_state::regs30_w));
 	map(0x48, 0x48).w(FUNC(hp4951b_state::port48_w));
-	map(0xc0, 0xc3).rw(FUNC(hp4951b_state::regsc0_r), FUNC(hp4951b_state::regsc0_w));
+	map(0xc0, 0xc3).rw(FUNC(hp4951b_state::kbd_r), FUNC(hp4951b_state::kbd_w));
 	map(0x4c, 0x4c).w(FUNC(hp4951b_state::pager_w));
 	map(0x50, 0x5f).rw(FUNC(hp4951b_state::regs50_r), FUNC(hp4951b_state::regs50_w));
 	map(0xbb, 0xbb).w(FUNC(hp4951b_state::icr_w));
