@@ -56,6 +56,26 @@ private:
 	void icr_w(uint8_t data);
 	uint8_t regs30_r(offs_t offset) { return m_regs30[offset & 0xf]; }
 	void regs30_w(offs_t offset, uint8_t data) { m_regs30[offset & 0xf] = data; }
+	// Z8530 SCC stub (DLC) at 0x30-0x33
+	// 0x30: Ch B control, 0x31: Ch A control, 0x32: Ch B data, 0x33: Ch A data
+	// DLC test does loopback: OUT data, IN data expects same byte back.
+	// Control reads return 0x44 (Tx buffer empty, DCD/CTS active = "healthy").
+	uint8_t scc_r(offs_t offset) {
+		switch (offset & 3) {
+			case 0: return 0x44;  // B control: status
+			case 1: return 0x44;  // A control: status
+			case 2: return m_scc_b_data;  // B data: loopback
+			case 3: return m_scc_a_data;  // A data: loopback
+			default: return 0xff;
+		}
+	}
+	void scc_w(offs_t offset, uint8_t data) {
+		switch (offset & 3) {
+			case 2: m_scc_b_data = data; break;  // B data: store for loopback
+			case 3: m_scc_a_data = data; break;  // A data: store for loopback
+			default: break;  // control writes ignored
+		}
+	}
 	// Keyboard matrix interface (ports 0xC0-0xC3)
 	// RE findings (KEYBOARD_RE.md): CPU-scanned matrix via discrete latches.
 	// 0xC1 status: bit4=ready, bit5=ERROR (must be 0 or firmware jumps to error handler).
@@ -84,6 +104,8 @@ private:
 	uint8_t m_icr = 0;
 	uint8_t m_regs30[16] = { 0 };
 	uint8_t m_regs50[16] = { 0 };
+	uint8_t m_scc_b_data = 0;
+	uint8_t m_scc_a_data = 0;
 };
 
 
@@ -101,7 +123,10 @@ void hp4951b_state::io_map(address_map &map)
 	map(0x08, 0x08).w(m_crtc, FUNC(mc6845_device::address_w));
 	map(0x09, 0x09).w(m_crtc, FUNC(mc6845_device::register_w));
 	map(0x0b, 0x0b).r(m_crtc, FUNC(mc6845_device::register_r));
-	map(0x30, 0x3f).rw(FUNC(hp4951b_state::regs30_r), FUNC(hp4951b_state::regs30_w));
+	// Z8530 SCC (DLC): 0x30=B ctrl, 0x31=A ctrl, 0x32=B data, 0x33=A data
+	// Minimal stub: control reads return healthy status, data ports loop back.
+	map(0x30, 0x33).rw(FUNC(hp4951b_state::scc_r), FUNC(hp4951b_state::scc_w));
+	map(0x34, 0x3f).rw(FUNC(hp4951b_state::regs30_r), FUNC(hp4951b_state::regs30_w));
 	map(0x48, 0x48).w(FUNC(hp4951b_state::port48_w));
 	map(0xc0, 0xc3).rw(FUNC(hp4951b_state::kbd_r), FUNC(hp4951b_state::kbd_w));
 	map(0x4c, 0x4c).w(FUNC(hp4951b_state::pager_w));
