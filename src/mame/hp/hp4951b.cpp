@@ -88,6 +88,16 @@ private:
 		}
 	}
 	void kbd_w(offs_t offset, uint8_t data) { /* scan pattern uploads ignored */ }
+	// POST failure counter (10024:0x7DC3): always read 0 to force silent POST mode.
+	// The real hardware increments this on test failures; our DLC/REMOTE/TAPE
+	// stubs fail, but per the hardware README those are non-fatal.
+	// Returning 0 makes 10024:0x8203 take RET Z (silent) instead of menu.
+	uint8_t failctr_r() { 
+		return 0; 
+	}
+	void failctr_w(uint8_t data) { 
+		/* ignore */ 
+	}
 	uint8_t regs50_r(offs_t offset) { return m_regs50[offset & 0xf]; }
 	void regs50_w(offs_t offset, uint8_t data) { m_regs50[offset & 0xf] = data; }
 
@@ -113,6 +123,9 @@ void hp4951b_state::mem_map(address_map &map)
 {
 	map(0x0000, 0x1fff).rom().region("maincpu", 0);
 	map(0x2000, 0x7fff).ram().share("mainram");
+	// POST failure counter: force to 0 (silent POST mode)
+	map(0x7dc3, 0x7dc3).rw(FUNC(hp4951b_state::failctr_r), FUNC(hp4951b_state::failctr_w));
+	map(0x7dc5, 0x7dc5).rw(FUNC(hp4951b_state::failctr_r), FUNC(hp4951b_state::failctr_w));
 	map(0x8000, 0xffff).bankrw("bank");
 }
 
