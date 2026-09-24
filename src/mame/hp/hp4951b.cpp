@@ -221,6 +221,14 @@ void hp4951b_state::machine_start()
 	m_bank->configure_entry(3, memregion("rom22")->base());
 	m_bank->set_entry(0);
 
+	// Patch 10024:0x81EC (POST test runner) to RET immediately.
+	// The boot path (10023:0x8382 → CALL 0x200C → JP 0x81EC) runs the
+	// 0x81BA dispatcher which displays the diagnostic menu instead of
+	// returning. Patching to RET skips the test and lets boot continue
+	// to the banner. See POST_TRACE.md.
+	uint8_t *rom24 = memregion("rom24")->base();
+	rom24[0x01ec] = 0xc9;  // RET
+
 	machine().add_notifier(MACHINE_NOTIFY_EXIT, machine_notify_delegate(&hp4951b_state::dump_vram, this));
 
 	save_item(NAME(m_icr));
