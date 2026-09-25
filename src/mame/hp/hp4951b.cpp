@@ -83,45 +83,28 @@ private:
 	uint8_t kbd_r(offs_t offset) {
 		switch (offset & 3) {
 			case 1: return 0x10;  // status: ready, no error
-			case 3: {
-				// Check MAME inputs, inject scancode via 0x7B56/0x7B58
-				uint8_t scancode = 0;
-				uint8_t key0 = ioport("KEY0")->read();
-				uint8_t key1 = ioport("KEY1")->read();
-				if (key0 & 0x01) scancode = 0x01;      // EXIT
-				else if (key0 & 0x02) scancode = 0x02; // Softkey 1
-				else if (key0 & 0x04) scancode = 0x03; // Softkey 2
-				else if (key0 & 0x08) scancode = 0x04; // Softkey 3
-				else if (key0 & 0x10) scancode = 0x05; // Softkey 4
-				else if (key0 & 0x20) scancode = 0x06; // Softkey 5
-				else if (key0 & 0x40) scancode = 0x07; // Softkey 6
-				else if (key0 & 0x80) scancode = 0x08; // MORE
-				else if (key1 & 0x01) scancode = 0x09; // Cursor Up
-				else if (key1 & 0x02) scancode = 0x0A; // Cursor Down
-				else if (key1 & 0x04) scancode = 0x0B; // Cursor Left
-				else if (key1 & 0x08) scancode = 0x0C; // Cursor Right
-				if (scancode != 0) {
-					// Inject via the firmware's flag mechanism
-					// 0x7B58 = scancode, 0x7B56 = key-available flag
-					uint8_t *ram = m_mainram;
-					ram[0x7B58 - 0x2000] = scancode;
-					ram[0x7B56 - 0x2000] = 1;
-				}
-				return scancode;
-			}
+			case 3: return get_scancode();
 			default: return 0x00;
 		}
 	}
 	void kbd_w(offs_t offset, uint8_t data) { /* scan pattern uploads ignored */ }
-	// POST failure counter (10024:0x7DC3): always read 0 to force silent POST mode.
-	// The real hardware increments this on test failures; our DLC/REMOTE/TAPE
-	// stubs fail, but per the hardware README those are non-fatal.
-	// Returning 0 makes 10024:0x8203 take RET Z (silent) instead of menu.
-	uint8_t failctr_r() { 
-		return 0; 
-	}
-	void failctr_w(uint8_t data) { 
-		/* ignore */ 
+	// Helper: check MAME inputs, return scancode (0 = no key)
+	uint8_t get_scancode() {
+		uint8_t key0 = ioport("KEY0")->read();
+		uint8_t key1 = ioport("KEY1")->read();
+		if (key0 & 0x01) return 0x01;      // EXIT
+		if (key0 & 0x02) return 0x02;     // Softkey 1
+		if (key0 & 0x04) return 0x03;     // Softkey 2
+		if (key0 & 0x08) return 0x04;     // Softkey 3
+		if (key0 & 0x10) return 0x05;     // Softkey 4
+		if (key0 & 0x20) return 0x06;     // Softkey 5
+		if (key0 & 0x40) return 0x07;     // Softkey 6
+		if (key0 & 0x80) return 0x08;     // MORE
+		if (key1 & 0x01) return 0x09;     // Cursor Up
+		if (key1 & 0x02) return 0x0A;     // Cursor Down
+		if (key1 & 0x04) return 0x0B;     // Cursor Left
+		if (key1 & 0x08) return 0x0C;     // Cursor Right
+		return 0;
 	}
 	uint8_t regs50_r(offs_t offset) { return m_regs50[offset & 0xf]; }
 	void regs50_w(offs_t offset, uint8_t data) { m_regs50[offset & 0xf] = data; }
@@ -148,9 +131,6 @@ void hp4951b_state::mem_map(address_map &map)
 {
 	map(0x0000, 0x1fff).rom().region("maincpu", 0);
 	map(0x2000, 0x7fff).ram().share("mainram");
-	// POST failure counter: force to 0 (silent POST mode)
-	map(0x7dc3, 0x7dc3).rw(FUNC(hp4951b_state::failctr_r), FUNC(hp4951b_state::failctr_w));
-	map(0x7dc5, 0x7dc5).rw(FUNC(hp4951b_state::failctr_r), FUNC(hp4951b_state::failctr_w));
 	map(0x8000, 0xffff).bankrw("bank");
 }
 
@@ -245,14 +225,6 @@ void hp4951b_state::machine_start()
 	m_bank->configure_entry(2, memregion("rom24")->base());
 	m_bank->configure_entry(3, memregion("rom22")->base());
 	m_bank->set_entry(0);
-
-	// Patch 10024:0x81EC (POST test runner) to RET immediately.
-	// The boot path (10023:0x8382 → CALL 0x200C → JP 0x81EC) runs the
-	// 0x81BA dispatcher which displays the diagnostic menu instead of
-	// returning. Patching to RET skips the test and lets boot continue
-	// to the banner. See POST_TRACE.md.
-	uint8_t *rom24 = memregion("rom24")->base();
-	rom24[0x01ec] = 0xc9;  // RET
 
 	machine().add_notifier(MACHINE_NOTIFY_EXIT, machine_notify_delegate(&hp4951b_state::dump_vram, this));
 
