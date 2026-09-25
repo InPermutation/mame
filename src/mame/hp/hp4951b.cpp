@@ -83,7 +83,32 @@ private:
 	uint8_t kbd_r(offs_t offset) {
 		switch (offset & 3) {
 			case 1: return 0x10;  // status: ready, no error
-			case 3: return 0x00;  // no key pressed
+			case 3: {
+				// Check MAME inputs, inject scancode via 0x7B56/0x7B58
+				uint8_t scancode = 0;
+				uint8_t key0 = ioport("KEY0")->read();
+				uint8_t key1 = ioport("KEY1")->read();
+				if (key0 & 0x01) scancode = 0x01;      // EXIT
+				else if (key0 & 0x02) scancode = 0x02; // Softkey 1
+				else if (key0 & 0x04) scancode = 0x03; // Softkey 2
+				else if (key0 & 0x08) scancode = 0x04; // Softkey 3
+				else if (key0 & 0x10) scancode = 0x05; // Softkey 4
+				else if (key0 & 0x20) scancode = 0x06; // Softkey 5
+				else if (key0 & 0x40) scancode = 0x07; // Softkey 6
+				else if (key0 & 0x80) scancode = 0x08; // MORE
+				else if (key1 & 0x01) scancode = 0x09; // Cursor Up
+				else if (key1 & 0x02) scancode = 0x0A; // Cursor Down
+				else if (key1 & 0x04) scancode = 0x0B; // Cursor Left
+				else if (key1 & 0x08) scancode = 0x0C; // Cursor Right
+				if (scancode != 0) {
+					// Inject via the firmware's flag mechanism
+					// 0x7B58 = scancode, 0x7B56 = key-available flag
+					uint8_t *ram = m_mainram;
+					ram[0x7B58 - 0x2000] = scancode;
+					ram[0x7B56 - 0x2000] = 1;
+				}
+				return scancode;
+			}
 			default: return 0x00;
 		}
 	}
@@ -248,6 +273,20 @@ void hp4951b_state::dump_vram()
 
 
 static INPUT_PORTS_START(hp4951b)
+	PORT_START("KEY0")
+	PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_ESC) PORT_NAME("EXIT")
+	PORT_BIT(0x02, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_F1) PORT_NAME("Softkey 1")
+	PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_F2) PORT_NAME("Softkey 2")
+	PORT_BIT(0x08, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_F3) PORT_NAME("Softkey 3")
+	PORT_BIT(0x10, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_F4) PORT_NAME("Softkey 4")
+	PORT_BIT(0x20, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_F5) PORT_NAME("Softkey 5")
+	PORT_BIT(0x40, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_F6) PORT_NAME("Softkey 6")
+	PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_M) PORT_NAME("MORE")
+	PORT_START("KEY1")
+	PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_UP) PORT_NAME("Cursor Up")
+	PORT_BIT(0x02, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_DOWN) PORT_NAME("Cursor Down")
+	PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_LEFT) PORT_NAME("Cursor Left")
+	PORT_BIT(0x08, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_RIGHT) PORT_NAME("Cursor Right")
 INPUT_PORTS_END
 
 
