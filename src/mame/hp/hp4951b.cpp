@@ -89,7 +89,56 @@ private:
 		}
 	}
 	void kbd_w(offs_t offset, uint8_t data) { /* scan pattern uploads ignored */ }
-	// Helper: check MAME inputs, return scancode (0 = no key)
+	// Helper: apply Shift/Ctrl modifiers to a base ASCII code.
+	// Ctrl+key generates the control code per the keycap labels
+	// (Q=DC1, [=ESC, ]=GS, \=FS, @=NUL, etc.)
+	uint8_t apply_mods(uint8_t base) {
+		uint8_t key8 = ioport("KEY8")->read();
+		bool shift = (key8 & 0x08) != 0;
+		bool ctrl = (key8 & 0x10) != 0;
+		if (ctrl) {
+			if (base >= 'a' && base <= 'z') return base & 0x1F;
+			if (base >= 'A' && base <= 'Z') return base & 0x1F;
+			switch (base) {
+				case '[': return 0x1B;  // ESC
+				case ']': return 0x1D;  // GS
+				case '\\': return 0x1C; // FS
+				case '@': return 0x00;  // NUL
+				case '^': return 0x1E;  // RS
+				case '_': return 0x1F;  // US
+				default: return base;
+			}
+		}
+		if (shift) {
+			if (base >= 'a' && base <= 'z') return base - 32;
+			switch (base) {
+				case '1': return '!';
+				case '2': return '"';
+				case '3': return '#';
+				case '4': return '$';
+				case '5': return '%';
+				case '6': return '&';
+				case '7': return '\'';
+				case '8': return '(';
+				case '9': return ')';
+				case '0': return '_';
+				case '-': return '=';
+				case '^': return '~';
+				case ';': return '+';
+				case ':': return '*';
+				case ',': return '<';
+				case '.': return '>';
+				case '/': return '?';
+				case '[': return '{';
+				case ']': return '}';
+				case '\\': return '|';
+				default: return base;
+			}
+		}
+		return base;
+	}
+	// Helper: check MAME inputs, return scancode (0 = no key).
+	// Softkeys/cursors return 0x01-0x0C; ASCII keys return ASCII codes.
 	uint8_t get_scancode() {
 		uint8_t key0 = ioport("KEY0")->read();
 		uint8_t key1 = ioport("KEY1")->read();
@@ -105,6 +154,63 @@ private:
 		if (key1 & 0x02) return 0x0A;     // Cursor Down
 		if (key1 & 0x04) return 0x0B;     // Cursor Left
 		if (key1 & 0x08) return 0x0C;     // Cursor Right
+		uint8_t key2 = ioport("KEY2")->read();
+		if (key2 & 0x01) return apply_mods('1');
+		if (key2 & 0x02) return apply_mods('2');
+		if (key2 & 0x04) return apply_mods('3');
+		if (key2 & 0x08) return apply_mods('4');
+		if (key2 & 0x10) return apply_mods('5');
+		if (key2 & 0x20) return apply_mods('6');
+		if (key2 & 0x40) return apply_mods('7');
+		if (key2 & 0x80) return apply_mods('8');
+		uint8_t key3 = ioport("KEY3")->read();
+		if (key3 & 0x01) return apply_mods('9');
+		if (key3 & 0x02) return apply_mods('0');
+		if (key3 & 0x04) return apply_mods('-');
+		if (key3 & 0x08) return apply_mods('^');
+		if (key3 & 0x10) return apply_mods('@');
+		if (key3 & 0x20) return apply_mods(';');
+		if (key3 & 0x40) return apply_mods(':');
+		uint8_t key4 = ioport("KEY4")->read();
+		if (key4 & 0x01) return apply_mods('q');
+		if (key4 & 0x02) return apply_mods('w');
+		if (key4 & 0x04) return apply_mods('e');
+		if (key4 & 0x08) return apply_mods('r');
+		if (key4 & 0x10) return apply_mods('t');
+		if (key4 & 0x20) return apply_mods('y');
+		if (key4 & 0x40) return apply_mods('u');
+		if (key4 & 0x80) return apply_mods('i');
+		uint8_t key5 = ioport("KEY5")->read();
+		if (key5 & 0x01) return apply_mods('o');
+		if (key5 & 0x02) return apply_mods('p');
+		if (key5 & 0x04) return apply_mods('a');
+		if (key5 & 0x08) return apply_mods('s');
+		if (key5 & 0x10) return apply_mods('d');
+		if (key5 & 0x20) return apply_mods('f');
+		if (key5 & 0x40) return apply_mods('g');
+		if (key5 & 0x80) return apply_mods('h');
+		uint8_t key6 = ioport("KEY6")->read();
+		if (key6 & 0x01) return apply_mods('j');
+		if (key6 & 0x02) return apply_mods('k');
+		if (key6 & 0x04) return apply_mods('l');
+		if (key6 & 0x08) return apply_mods('z');
+		if (key6 & 0x10) return apply_mods('x');
+		if (key6 & 0x20) return apply_mods('c');
+		if (key6 & 0x40) return apply_mods('v');
+		if (key6 & 0x80) return apply_mods('b');
+		uint8_t key7 = ioport("KEY7")->read();
+		if (key7 & 0x01) return apply_mods('n');
+		if (key7 & 0x02) return apply_mods('m');
+		if (key7 & 0x04) return apply_mods(',');
+		if (key7 & 0x08) return apply_mods('.');
+		if (key7 & 0x10) return apply_mods('/');
+		if (key7 & 0x20) return apply_mods(' ');
+		if (key7 & 0x40) return apply_mods('[');
+		if (key7 & 0x80) return apply_mods(']');
+		uint8_t key8 = ioport("KEY8")->read();
+		if (key8 & 0x01) return apply_mods('\\');
+		if (key8 & 0x02) return 0x0D;      // RTN
+		if (key8 & 0x04) return 0x7F;      // DEL
 		return 0;
 	}
 	// TEMP HACK: Poll MAME inputs and inject key events directly into RAM.
@@ -266,12 +372,71 @@ static INPUT_PORTS_START(hp4951b)
 	PORT_BIT(0x10, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_F4) PORT_NAME("Softkey 4")
 	PORT_BIT(0x20, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_F5) PORT_NAME("Softkey 5")
 	PORT_BIT(0x40, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_F6) PORT_NAME("Softkey 6")
-	PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_M) PORT_NAME("MORE")
+	PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_F7) PORT_NAME("MORE")
 	PORT_START("KEY1")
 	PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_UP) PORT_NAME("Cursor Up")
 	PORT_BIT(0x02, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_DOWN) PORT_NAME("Cursor Down")
 	PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_LEFT) PORT_NAME("Cursor Left")
 	PORT_BIT(0x08, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_RIGHT) PORT_NAME("Cursor Right")
+	PORT_START("KEY2")  // Number row 1-8
+	PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_1) PORT_NAME("1 !")
+	PORT_BIT(0x02, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_2) PORT_NAME("2 \"")
+	PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_3) PORT_NAME("3 #")
+	PORT_BIT(0x08, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_4) PORT_NAME("4 $")
+	PORT_BIT(0x10, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_5) PORT_NAME("5 %")
+	PORT_BIT(0x20, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_6) PORT_NAME("6 &")
+	PORT_BIT(0x40, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_7) PORT_NAME("7 '")
+	PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_8) PORT_NAME("8 (")
+	PORT_START("KEY3")  // Number row 9,0,-,^ and @,;,:
+	PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_9) PORT_NAME("9 )")
+	PORT_BIT(0x02, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_0) PORT_NAME("0 _")
+	PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_MINUS) PORT_NAME("- =")
+	PORT_BIT(0x08, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_EQUALS) PORT_NAME("^ ~ RS")
+	PORT_BIT(0x10, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_TILDE) PORT_NAME("@ NUL")
+	PORT_BIT(0x20, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_COLON) PORT_NAME("; +")
+	PORT_BIT(0x40, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_QUOTE) PORT_NAME(": *")
+	PORT_START("KEY4")  // QWERTY Q-I
+	PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_Q) PORT_NAME("Q DC1")
+	PORT_BIT(0x02, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_W) PORT_NAME("W ETB")
+	PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_E) PORT_NAME("E ENQ")
+	PORT_BIT(0x08, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_R) PORT_NAME("R DC2")
+	PORT_BIT(0x10, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_T) PORT_NAME("T DC4")
+	PORT_BIT(0x20, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_Y) PORT_NAME("Y EM")
+	PORT_BIT(0x40, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_U) PORT_NAME("U NAK")
+	PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_I) PORT_NAME("I HT")
+	PORT_START("KEY5")  // QWERTY O,P + Home A-H
+	PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_O) PORT_NAME("O SI")
+	PORT_BIT(0x02, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_P) PORT_NAME("P DLE")
+	PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_A) PORT_NAME("A SOH")
+	PORT_BIT(0x08, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_S) PORT_NAME("S DC3")
+	PORT_BIT(0x10, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_D) PORT_NAME("D EOT")
+	PORT_BIT(0x20, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_F) PORT_NAME("F ACK")
+	PORT_BIT(0x40, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_G) PORT_NAME("G BEL")
+	PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_H) PORT_NAME("H BS")
+	PORT_START("KEY6")  // Home J,K,L + Bottom Z,X,C,V,B
+	PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_J) PORT_NAME("J LF")
+	PORT_BIT(0x02, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_K) PORT_NAME("K VT")
+	PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_L) PORT_NAME("L FF")
+	PORT_BIT(0x08, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_Z) PORT_NAME("Z SUB")
+	PORT_BIT(0x10, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_X) PORT_NAME("X CAN")
+	PORT_BIT(0x20, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_C) PORT_NAME("C ETX")
+	PORT_BIT(0x40, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_V) PORT_NAME("V SYN")
+	PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_B) PORT_NAME("B STX")
+	PORT_START("KEY7")  // Bottom N,M,,,,.,/,Space,[,]
+	PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_N) PORT_NAME("N SO")
+	PORT_BIT(0x02, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_M) PORT_NAME("M CR")
+	PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_COMMA) PORT_NAME(", <")
+	PORT_BIT(0x08, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_STOP) PORT_NAME(". >")
+	PORT_BIT(0x10, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_SLASH) PORT_NAME("/ ? US")
+	PORT_BIT(0x20, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_SPACE) PORT_NAME("Space")
+	PORT_BIT(0x40, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_OPENBRACE) PORT_NAME("[ ESC")
+	PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_CLOSEBRACE) PORT_NAME("] GS")
+	PORT_START("KEY8")  // \, RTN, DEL, SHIFT, CNTL
+	PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_BACKSLASH) PORT_NAME("\\ FS")
+	PORT_BIT(0x02, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_ENTER) PORT_NAME("RTN")
+	PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_BACKSPACE) PORT_NAME("DEL")
+	PORT_BIT(0x08, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_LSHIFT) PORT_CODE(KEYCODE_RSHIFT) PORT_NAME("SHIFT")
+	PORT_BIT(0x10, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_LCONTROL) PORT_CODE(KEYCODE_RCONTROL) PORT_NAME("CNTL")
 INPUT_PORTS_END
 
 
