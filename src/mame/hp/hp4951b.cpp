@@ -22,6 +22,7 @@
 
 #include "cpu/z80/nsc800.h"
 #include "video/mc6845.h"
+#include "machine/timer.h"
 
 #include "screen.h"
 
@@ -105,6 +106,18 @@ private:
 		if (key1 & 0x04) return 0x0B;     // Cursor Left
 		if (key1 & 0x08) return 0x0C;     // Cursor Right
 		return 0;
+	}
+	// TEMP HACK: Poll MAME inputs and inject key events directly into RAM.
+	// The authentic path is NSC810 Timer 0 -> IRQ -> ISR -> flag, but
+	// interrupts are masked during the menu. This bypasses the ISR and
+	// writes the flag/scancode directly where the menu polls them.
+	// CPU 0x7B56 = m_mainram[0x5B56], CPU 0x7B58 = m_mainram[0x5B58].
+	TIMER_DEVICE_CALLBACK_MEMBER(kbd_poll) {
+		uint8_t sc = get_scancode();
+		if (sc != 0) {
+			m_mainram[0x5B56] = 0x01;  // key-available flag
+			m_mainram[0x5B58] = sc;    // scancode
+		}
 	}
 	uint8_t regs50_r(offs_t offset) { return m_regs50[offset & 0xf]; }
 	void regs50_w(offs_t offset, uint8_t data) { m_regs50[offset & 0xf] = data; }
@@ -277,6 +290,8 @@ void hp4951b_state::hp4951b(machine_config &config)
 	m_crtc->set_show_border_area(false);
 	m_crtc->set_char_width(8);
 	m_crtc->set_update_row_callback(FUNC(hp4951b_state::crtc_update_row));
+
+	TIMER(config, "kbd_poll").configure_periodic(FUNC(hp4951b_state::kbd_poll), attotime::from_msec(50));
 }
 
 
