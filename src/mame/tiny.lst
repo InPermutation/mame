@@ -18,6 +18,9 @@ gridlee
 @source:exidy/carpolo.cpp
 carpolo
 
+@source:hp/hp4951b.cpp
+hp4951b
+
 @source:exidy/circus.cpp
 circus
 circuso
