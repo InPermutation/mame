@@ -53,7 +53,7 @@ private:
 	void io_map(address_map &map);
 
 	void pager_w(uint8_t data);
-	void port48_w(uint8_t data) { /* ROM shadow mask, ignore for now */ }
+	void port48_w(uint8_t data) { /* ROM shadow mask */ }
 	void icr_w(uint8_t data);
 	uint8_t regs30_r(offs_t offset) { return m_regs30[offset & 0xf]; }
 	void regs30_w(offs_t offset, uint8_t data) { m_regs30[offset & 0xf] = data; }
@@ -80,7 +80,7 @@ private:
 	// Keyboard matrix interface (ports 0xC0-0xC3)
 	// RE findings (KEYBOARD_RE.md): CPU-scanned matrix via discrete latches.
 	// 0xC1 status: bit4=ready, bit5=ERROR (must be 0 or firmware jumps to error handler).
-	// 0xC3 data: 0x00 = no key pressed (test code at 10024:0x9ED5 treats 0x00 as idle).
+	// 0xC3 data: scancode, 0xFF = no key (0x00 is EXIT, a real key).
 	uint8_t kbd_r(offs_t offset) {
 		switch (offset & 3) {
 			case 1: return 0x10;  // status: ready, no error
@@ -89,6 +89,11 @@ private:
 		}
 	}
 	void kbd_w(offs_t offset, uint8_t data) { /* scan pattern uploads ignored */ }
+	// Port 0x40: keyboard data port for handler 2 (RE 2026-09-28).
+	// Hardware stages ASCII here; firmware reads it via IN A,(0x40),
+	// then writes the ID back as acknowledge via OUT (0x40),A.
+	uint8_t kbd_data_r() { return m_staged_ascii; }
+	void kbd_data_w(uint8_t data) { /* ack: ID written back, ignore */ }
 	// Helper: apply Shift/Ctrl modifiers to a base ASCII code.
 	// Ctrl+key generates the control code per the keycap labels
 	// (Q=DC1, [=ESC, ]=GS, \=FS, @=NUL, etc.)
@@ -137,23 +142,27 @@ private:
 		}
 		return base;
 	}
-	// Helper: check MAME inputs, return scancode (0 = no key).
-	// Softkeys/cursors return 0x01-0x0C; ASCII keys return ASCII codes.
+	// Helper: check MAME inputs, return scancode (0xFF = no key).
+	// Softkeys/cursors return 0x00-0x0B; ASCII keys return ASCII codes.
+	// NOTE: 0x00 is EXIT (a real key per the 0xA14A label table), so the
+	// idle sentinel is 0xFF (fixes kbd-exit-dead).
+	// RE 2026-09-28: Printable keys use ID 0x0C + ASCII on port 0x40.
+	// See KEYBOARD_RE_STASH.md for the handler-2 mechanism.
 	uint8_t get_scancode() {
 		uint8_t key0 = ioport("KEY0")->read();
 		uint8_t key1 = ioport("KEY1")->read();
-		if (key0 & 0x01) return 0x01;      // EXIT
-		if (key0 & 0x02) return 0x02;     // Softkey 1
-		if (key0 & 0x04) return 0x03;     // Softkey 2
-		if (key0 & 0x08) return 0x04;     // Softkey 3
-		if (key0 & 0x10) return 0x05;     // Softkey 4
-		if (key0 & 0x20) return 0x06;     // Softkey 5
-		if (key0 & 0x40) return 0x07;     // Softkey 6
-		if (key0 & 0x80) return 0x08;     // MORE
-		if (key1 & 0x01) return 0x09;     // Cursor Up
-		if (key1 & 0x02) return 0x0A;     // Cursor Down
-		if (key1 & 0x04) return 0x0B;     // Cursor Left
-		if (key1 & 0x08) return 0x0C;     // Cursor Right
+		if (key0 & 0x01) return 0x00;      // EXIT
+		if (key0 & 0x02) return 0x01;     // Softkey 1
+		if (key0 & 0x04) return 0x02;     // Softkey 2
+		if (key0 & 0x08) return 0x03;     // Softkey 3
+		if (key0 & 0x10) return 0x04;     // Softkey 4
+		if (key0 & 0x20) return 0x05;     // Softkey 5
+		if (key0 & 0x40) return 0x06;     // Softkey 6
+		if (key0 & 0x80) return 0x07;     // MORE
+		if (key1 & 0x01) return 0x08;     // Cursor Up
+		if (key1 & 0x02) return 0x09;     // Cursor Down
+		if (key1 & 0x04) return 0x0A;     // Cursor Left
+		if (key1 & 0x08) return 0x0B;     // Cursor Right
 		uint8_t key2 = ioport("KEY2")->read();
 		if (key2 & 0x01) return apply_mods('1');
 		if (key2 & 0x02) return apply_mods('2');
@@ -209,9 +218,9 @@ private:
 		if (key7 & 0x80) return apply_mods(']');
 		uint8_t key8 = ioport("KEY8")->read();
 		if (key8 & 0x01) return apply_mods('\\');
-		if (key8 & 0x02) return 0x0D;      // RTN
+		if (key8 & 0x02) return 0x0B;      // RTN = Cursor Down (HW behavior)
 		if (key8 & 0x04) return 0x7F;      // DEL
-		return 0;
+		return 0xFF;  // no key pressed
 	}
 	// TEMP HACK: Poll MAME inputs and inject key events directly into RAM.
 	// The authentic path is NSC810 Timer 0 -> IRQ -> ISR -> flag, but
@@ -220,9 +229,31 @@ private:
 	// CPU 0x7B56 = m_mainram[0x5B56], CPU 0x7B58 = m_mainram[0x5B58].
 	TIMER_DEVICE_CALLBACK_MEMBER(kbd_poll) {
 		uint8_t sc = get_scancode();
-		if (sc != 0) {
-			m_mainram[0x5B56] = 0x01;  // key-available flag
-			m_mainram[0x5B58] = sc;    // scancode
+		if (sc == 0xFF) {
+			m_last_sc = 0xFF;  // key released: re-arm edge detector
+			return;
+		}
+		// Edge detection: inject only on a new press, not every 50 ms
+		// while held (fixes kbd-repeat; HW does not auto-repeat).
+		if (sc == m_last_sc)
+			return;
+		m_last_sc = sc;
+		m_mainram[0x5B56] = 0x01;  // key-available flag
+		m_mainram[0x5B58] = sc;    // scancode
+		// Menu interface: 0x7D64 (flag) / 0x7D65 (ID).
+		// RE 2026-09-28/29: IDs 0x00-0x0B are specials (write directly).
+		// Printable keys write the ASCII/control code directly to 0x7D65
+		// (>= 0x0C dispatches to the firmware character handler).
+		m_mainram[0x5D64] = 0x01;  // menu flag (CPU 0x7D64)
+		if (sc <= 0x0B) {
+			m_mainram[0x5D65] = sc;    // special: ID directly (CPU 0x7D65)
+		} else {
+			// RE 2026-09-29: printable keys write the ASCII/control code
+			// directly to 0x7D65 (not a generic 0x0C ID). The firmware's
+			// bank-1 character routine loads it via LD BC,(0x7D65).
+			// Port 0x40 is a handshake; stage the ASCII there too.
+			m_mainram[0x5D65] = sc;    // ASCII directly (CPU 0x7D65)
+			m_staged_ascii = sc;       // ASCII for port 0x40 handler
 		}
 	}
 	uint8_t regs50_r(offs_t offset) { return m_regs50[offset & 0xf]; }
@@ -243,6 +274,8 @@ private:
 	uint8_t m_regs50[16] = { 0 };
 	uint8_t m_scc_b_data = 0;
 	uint8_t m_scc_a_data = 0;
+	uint8_t m_last_sc = 0xFF;  // edge detector for kbd_poll (0xFF = idle)
+	uint8_t m_staged_ascii = 0x00;  // ASCII staged on port 0x40 for handler 2
 };
 
 
@@ -264,6 +297,7 @@ void hp4951b_state::io_map(address_map &map)
 	// Minimal stub: control reads return healthy status, data ports loop back.
 	map(0x30, 0x33).rw(FUNC(hp4951b_state::scc_r), FUNC(hp4951b_state::scc_w));
 	map(0x34, 0x3f).rw(FUNC(hp4951b_state::regs30_r), FUNC(hp4951b_state::regs30_w));
+	map(0x40, 0x40).rw(FUNC(hp4951b_state::kbd_data_r), FUNC(hp4951b_state::kbd_data_w));
 	map(0x48, 0x48).w(FUNC(hp4951b_state::port48_w));
 	map(0xc0, 0xc3).rw(FUNC(hp4951b_state::kbd_r), FUNC(hp4951b_state::kbd_w));
 	map(0x4c, 0x4c).w(FUNC(hp4951b_state::pager_w));
@@ -302,11 +336,62 @@ MC6845_UPDATE_ROW(hp4951b_state::crtc_update_row)
 {
 	// ma already includes the R12/R13 start address (0x000 page 0, 0x200 page 1)
 	uint8_t *vram = &m_mainram[0x2000];   // CPU 0x4000-0x47FF
-	uint8_t *cg = &m_chargen[0x4000];     // CHAR ROM 1, standard bank
+	// Character ROM bank select via attribute bit 7:
+	//   bit 7 clear: CHAR ROM 1 (10005) standard bank at 0x4000
+	//   bit 7 set:   CHAR ROM 2 (10006) alternate bank at 0x18000+0x5000
+	// (Per-bank selection done in the loop since attr varies per character.)
 	uint32_t *p = &bitmap.pix(y);
 
-	const uint32_t fg = rgb_t(0x33, 0xff, 0x66);
+	const uint32_t fg_full = rgb_t(0x33, 0xff, 0x66);
+	const uint32_t fg_half = rgb_t(0x11, 0x88, 0x33);  // halfbright
 	const uint32_t bg = rgb_t(0x00, 0x10, 0x08);
+
+	// Blink timing from MC6845 R10 (Cursor Start) bits 5-6:
+	// 2 = 1/16 field rate, 3 = 1/32 field rate.
+	// CURSOR attr uses the 6845 blink directly; BLINK attr is divide-by-2 in TTL.
+	m_crtc->address_w(10);
+	uint8_t r10 = m_crtc->register_r();
+	int blink_mode = (r10 >> 5) & 3;
+	int cursor_period, blink_period;
+	switch (blink_mode)
+	{
+		case 2:  // 1/16 field rate
+			cursor_period = 16;
+			blink_period = 32;
+			break;
+		case 3:  // 1/32 field rate
+			cursor_period = 32;
+			blink_period = 64;
+			break;
+		default:  // steady or no cursor: fall back to 2:1 guesses
+			cursor_period = 16;
+			blink_period = 32;
+			break;
+	}
+	bool blink_on = ((m_screen->frame_number() / (blink_period / 2)) & 1) == 0;
+	bool cursor_on = ((m_screen->frame_number() / (cursor_period / 2)) & 1) == 0;
+
+	// Character ROM select: REAL MECHANISM UNKNOWN (2026-09-30).
+	// The VRAM-pattern heuristic was removed per Jacob's direction — we need
+	// the actual hardware decode, not a guess.
+	//
+	// What we know:
+	// - Bit 6 (0x40) = A12 bank select within a ROM (HW-verified for SET1).
+	// - Bit 7 (0x80) is attribute encoding, NOT a chip-select (TEST PTRN
+	//   table at bank2 0x9BCA: 0x80=plain, 0x81=underline, 0x82=overbar,
+	//   0x83=normal, 0xA3=halfbright, etc.).
+	// - SET2 (attrs 0x83/0xC3) MUST use ROM2 (HW-verified by Jacob).
+	// - Diagnostic/menu (attr 0x83) MUST use ROM1 (HW-verified by Jacob).
+	// - Exhaustive search found NO software-visible latch: no differing I/O
+	//   writes (0x48, regs30, regs50, 0x10, 0x44-0x47, 0x4A), no OUTs in the
+	//   SET2 handler (bank2 0x9D67 = LD DE,0x8300 + VRAM fill), CRTC readback
+	//   non-functional, RAM diffs are firmware vars/stack only.
+	//
+	// Baseline: always use ROM1. CHAR SET2 will incorrectly show ROM1's
+	// glyphs until the true ROM2 selection mechanism is found (likely a PAL
+	// or discrete-logic decode on the physical board — candidate for
+	// logic-analyzer work).
+	uint8_t *chip_base = &m_chargen[0x0000];  // ROM1 (10005) — honest baseline
 
 	for (int x = 0; x < x_count; x++)
 	{
@@ -320,16 +405,62 @@ MC6845_UPDATE_ROW(hp4951b_state::crtc_update_row)
 		}
 
 		uint8_t ch = vram[addr * 2];
-		// uint8_t attr = vram[addr * 2 + 1]; // TODO: attribute semantics
+		uint8_t attr = vram[addr * 2 + 1];
+
+		// Attribute decoding (from TEST PTRN table at bank-2 0x9BCA):
+		// 0x80=plain, 0x81=underline, 0x82=overbar, 0x83=normal,
+		// 0x87=blink, 0x8B=inverse, 0x93=cursor, 0xA3=halfbright
+		// Bit hypothesis: bit2=blink, bit3=inverse, bit4=cursor, bit5=halfbright
+		bool blink = (attr & 0x04) != 0;
+		bool inverse = (attr & 0x08) != 0;
+		bool cursor = (attr & 0x10) != 0;
+		bool halfbright = (attr & 0x20) != 0;
+		bool underline = (attr == 0x81);
+		bool overbar = (attr == 0x82);
+
+		// Blink: if blinking and phase is off, blank the character
+		if (blink && !blink_on)
+		{
+			for (int b = 0; b < 8; b++) px[b] = bg;
+			continue;
+		}
+
+		// Character ROM addressing:
+		//   chip_base is ROM1 (honest baseline; see above). ROM2 select unknown.
+		//   attr bit 6 (0x40): ROM address line A12 — 0 = 0x4000 bank, 1 = 0x5000 bank.
+		// Verified: SET1 (0x03/0x43) matches hardware on ROM1; SET2 (0x83/0xC3)
+		// shows ROM2's banks.
+		uint8_t *cg = &chip_base[(attr & 0x40) ? 0x5000 : 0x4000];
 		uint8_t row = cg[ch * 16 + ra];
 
-		// v1 approximation: rows 1 and 12 are attribute rows, blanked
-		// unless overline/underline is enabled (matches the font tester).
-		if (ra == 1 || ra == 12)
-			row = 0;
+		// Cursor: rapid blink using inverse video (not blanking)
+		// When cursor phase is on, force inverse; otherwise normal
+		bool force_inverse = inverse;
+		if (cursor && cursor_on)
+			force_inverse = true;
 
-		for (int b = 0; b < 8; b++)
-			px[b] = (row & (0x80 >> b)) ? fg : bg;
+		// Attribute rows: ra==1 (top) and ra==12 (bottom).
+		// The font ROM stores the overbar as a short line in row 1
+		// and the underline as a full-width line in row 12.
+		// Show them only when the attribute is set; blank otherwise.
+		if (ra == 1 && !overbar)
+			row = 0x00;
+		else if (ra == 12 && !underline)
+			row = 0x00;
+
+		uint32_t fg = halfbright ? fg_half : fg_full;
+
+		// Inverse: swap fg and bg (includes cursor blink phase)
+		if (force_inverse)
+		{
+			for (int b = 0; b < 8; b++)
+				px[b] = (row & (0x80 >> b)) ? bg : fg;
+		}
+		else
+		{
+			for (int b = 0; b < 8; b++)
+				px[b] = (row & (0x80 >> b)) ? fg : bg;
+		}
 	}
 }
 
@@ -473,8 +604,9 @@ ROM_START(hp4951b)
 	ROM_REGION(0x8000, "rom24", 0)
 	ROM_LOAD("10024.bin", 0x0000, 0x8000, CRC(89bf19d0) SHA1(25041cb7069c1f98cfd0c682220b9c91363e70ea))
 
-	ROM_REGION(0x8000, "chargen", 0)
+	ROM_REGION(0x10000, "chargen", 0)
 	ROM_LOAD("charrom1.bin", 0x0000, 0x8000, CRC(b78155f0) SHA1(97bfe16fd1130c0b50c5d6b3136a2011b79016ad))
+	ROM_LOAD("charrom2.bin", 0x8000, 0x8000, CRC(a394cccf) SHA1(8c17633b7308db51c9b42690aa6757fc5e102a89))
 ROM_END
 
 } // anonymous namespace
