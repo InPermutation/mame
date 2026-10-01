@@ -361,13 +361,36 @@ void hp4951b_state::pager_w(uint8_t data)
 	// Type-1 trampoline table (@0xBD in fixed ROM):
 	//   bank0 -> 0x11, bank1 -> 0x01, bank2 -> 0x10, bank3 -> 0x00
 	// bank1 = 10023, bank2 = 10024 (jump-table analysis); bank0/bank3 guessed.
+	// Type-2 trampoline (L<<1): 0x04=10024, 0x06=10023 at 0x2000 window.
+	// The 0x2000-0x20FF holds JP tables for cross-bank calls (CALL 0x2009 etc.).
+	// We emulate by copying the ROM's JP table into RAM at 0x2000 when the
+	// call comes from banked code (0x8000-0xFFFF). Calls from fixed ROM during
+	// POST are hardware init, not cross-bank calls — don't poke JPs there.
 	logerror("hp4951b: pager byte 0x%02x (PC=%04x)\n", data, m_maincpu->pc());
+	uint16_t pc = m_maincpu->pc();
+	bool from_banked = (pc >= 0x8000);
 	switch (data)
 	{
 	case 0x11: m_bank->set_entry(0); break; // banked RAM (guess)
 	case 0x01: m_bank->set_entry(1); break; // 10023 UI shell
 	case 0x10: m_bank->set_entry(2); break; // 10024 engine
 	case 0x00: m_bank->set_entry(3); break; // 10022 remote/pod (guess)
+	case 0x04:
+		if (from_banked) {
+			auto *rgn = memregion("rom24");
+			if (rgn) {
+				memcpy(&m_mainram[0], rgn->base(), 0x100);
+			}
+		}
+		break;
+	case 0x06:
+		if (from_banked) {
+			auto *rgn = memregion("rom23");
+			if (rgn) {
+				memcpy(&m_mainram[0], rgn->base(), 0x100);
+			}
+		}
+		break;
 	default:
 		break;
 	}
@@ -525,6 +548,22 @@ void hp4951b_state::machine_start()
 	m_bank->configure_entry(2, memregion("rom24")->base());
 	m_bank->configure_entry(3, memregion("rom22")->base());
 	m_bank->set_entry(0);
+
+	// Workaround: POST RAM test (LDIR at 0x1CFD, called from 0x1AD8/0x1AEB)
+	// hangs MAME's NSC800 when HL==DE. The test copies 8KB from 0x2000 to
+	// 0x2000 (a no-op). Patch the CALLs to NOPs to skip it.
+	auto *rgn = memregion("maincpu");
+	if (rgn) {
+		uint8_t *rom = rgn->base();
+		// CALL 0x1CF6 at 0x1AD8 (CD F6 1C)
+		if (rom[0x1AD8] == 0xCD && rom[0x1AD9] == 0xF6 && rom[0x1ADA] == 0x1C) {
+			rom[0x1AD8] = 0x00; rom[0x1AD9] = 0x00; rom[0x1ADA] = 0x00;
+		}
+		// CALL 0x1CF0 at 0x1AEB (CD F0 1C)
+		if (rom[0x1AEB] == 0xCD && rom[0x1AEC] == 0xF0 && rom[0x1AED] == 0x1C) {
+			rom[0x1AEB] = 0x00; rom[0x1AEC] = 0x00; rom[0x1AED] = 0x00;
+		}
+	}
 
 	// Keyboard IRQ: Z80 IM 2, vector 0x4C -> ISR at fixed ROM 0x1BBB.
 	// The 74HC74 IRQ flip-flop asserts INT; the vector byte is hardwired.
