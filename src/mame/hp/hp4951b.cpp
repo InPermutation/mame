@@ -38,7 +38,6 @@ public:
 		m_crtc(*this, "crtc"),
 		m_screen(*this, "screen"),
 		m_bank(*this, "bank"),
-		m_winbank(*this, "winbank"),
 		m_mainram(*this, "mainram"),
 		m_chargen(*this, "chargen")
 	{ }
@@ -54,6 +53,8 @@ private:
 	void io_map(address_map &map);
 
 	void pager_w(uint8_t data);
+	uint8_t win_r(offs_t offset);
+	void win_w(offs_t offset, uint8_t data);
 	void port48_w(uint8_t data) { /* ROM shadow mask */ }
 	void icr_w(uint8_t data);
 	uint8_t regs30_r(offs_t offset) { return m_regs30[offset & 0xf]; }
@@ -316,7 +317,8 @@ private:
 	required_device<mc6845_device> m_crtc;
 	required_device<screen_device> m_screen;
 	required_memory_bank m_bank;
-	required_memory_bank m_winbank;
+	// 0x2000 window state: 0=RAM, 1=10023 JP table, 2=10024 JP table
+	uint8_t m_winstate = 0;
 	required_shared_ptr<uint8_t> m_mainram;
 	required_region_ptr<uint8_t> m_chargen;
 
@@ -337,9 +339,9 @@ void hp4951b_state::mem_map(address_map &map)
 	map(0x0000, 0x1fff).rom().region("maincpu", 0);
 	// 0x2000-0x20FF: cross-bank call window. Normally RAM, but the type-2
 	// pager (0x04/0x06) overlays the selected bank's JP table (ROM) here
-	// via PAL logic — a hardware mapping, not a copy. Writes during the
-	// window go to the RAM underneath (bank is read-only for ROM entries).
-	map(0x2000, 0x20ff).bankrw("winbank");
+	// via PAL logic — a hardware mapping, not a copy. Reads come from the
+	// selected ROM JP table (or RAM); writes always go to the RAM underneath.
+	map(0x2000, 0x20ff).rw(FUNC(hp4951b_state::win_r), FUNC(hp4951b_state::win_w));
 	map(0x2100, 0x7fff).ram().share("mainram");
 	map(0x8000, 0xffff).bankrw("bank");
 }
@@ -364,6 +366,24 @@ void hp4951b_state::io_map(address_map &map)
 }
 
 
+// 0x2000-0x20FF cross-bank call window: reads come from the selected ROM's
+// JP table (or the underlying RAM); writes always land in the RAM underneath,
+// never in ROM. This models the PAL mapping, not a memcpy.
+uint8_t hp4951b_state::win_r(offs_t offset)
+{
+	int entry = m_winstate;
+	if (entry == 1)
+		return memregion("rom23")->base()[offset];
+	if (entry == 2)
+		return memregion("rom24")->base()[offset];
+	return m_winram[offset];
+}
+
+void hp4951b_state::win_w(offs_t offset, uint8_t data)
+{
+	m_winram[offset] = data;
+}
+
 void hp4951b_state::pager_w(uint8_t data)
 {
 	// Type-1 trampoline table (@0xBD in fixed ROM):
@@ -376,22 +396,22 @@ void hp4951b_state::pager_w(uint8_t data)
 	// RAM, entry 1 = 10023 JP table, entry 2 = 10024 JP table. Calls from
 	// fixed ROM during POST are hardware init, not cross-bank calls — don't
 	// switch the window there (PC gate).
-	logerror("hp4951b: pager byte 0x%02x (PC=%04x)\n", data, m_maincpu->pc());
+	//logerror("hp4951b: pager byte 0x%02x (PC=%04x)\n", data, m_maincpu->pc());
 	uint16_t pc = m_maincpu->pc();
 	bool from_banked = (pc >= 0x8000);
 	switch (data)
 	{
-	case 0x11: m_bank->set_entry(0); m_winbank->set_entry(0); break; // banked RAM (guess)
-	case 0x01: m_bank->set_entry(1); m_winbank->set_entry(0); break; // 10023 UI shell
-	case 0x10: m_bank->set_entry(2); m_winbank->set_entry(0); break; // 10024 engine
-	case 0x00: m_bank->set_entry(3); m_winbank->set_entry(0); break; // 10022 remote/pod (guess)
+	case 0x11: m_bank->set_entry(0); m_winstate = 0; break; // banked RAM (guess)
+	case 0x01: m_bank->set_entry(1); m_winstate = 0; break; // 10023 UI shell
+	case 0x10: m_bank->set_entry(2); m_winstate = 0; break; // 10024 engine
+	case 0x00: m_bank->set_entry(3); m_winstate = 0; break; // 10022 remote/pod (guess)
 	case 0x04:
 		// 10024 JP table at 0x2000 window (only from banked code)
-		if (from_banked) m_winbank->set_entry(2);
+		if (from_banked) m_winstate = 2;
 		break;
 	case 0x06:
 		// 10023 JP table at 0x2000 window (only from banked code)
-		if (from_banked) m_winbank->set_entry(1);
+		if (from_banked) m_winstate = 1;
 		break;
 	default:
 		break;
@@ -559,10 +579,7 @@ void hp4951b_state::machine_start()
 	// bankrw with RAM backing for entry 0).
 	m_winram = std::make_unique<uint8_t[]>(0x100);
 	memset(m_winram.get(), 0, 0x100);
-	m_winbank->configure_entry(0, m_winram.get());
-	m_winbank->configure_entry(1, memregion("rom23")->base());
-	m_winbank->configure_entry(2, memregion("rom24")->base());
-	m_winbank->set_entry(0);
+	m_winstate = 0;
 
 	// Workaround: POST RAM test (LDIR at 0x1CFD, called from 0x1AD8/0x1AEB)
 	// hangs MAME's NSC800 when HL==DE. The test copies 8KB from 0x2000 to
