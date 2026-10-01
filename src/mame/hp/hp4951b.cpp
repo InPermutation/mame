@@ -599,7 +599,7 @@ void hp4951b_state::machine_start()
 
 	// Keyboard IRQ: Z80 IM 2, vector 0x4C -> ISR at fixed ROM 0x1BBB.
 	// The 74HC74 IRQ flip-flop asserts INT; the vector byte is hardwired.
-	m_maincpu->set_irq_acknowledge_callback(FUNC(hp4951b_state::kbd_irq_ack));
+	m_maincpu->set_irq_acknowledge_callback(*this, FUNC(hp4951b_state::kbd_irq_ack));
 
 	machine().add_notifier(MACHINE_NOTIFY_EXIT, machine_notify_delegate(&hp4951b_state::dump_vram, this));
 
