@@ -38,6 +38,7 @@ public:
 		m_crtc(*this, "crtc"),
 		m_screen(*this, "screen"),
 		m_bank(*this, "bank"),
+		m_winbank(*this, "winbank"),
 		m_mainram(*this, "mainram"),
 		m_chargen(*this, "chargen")
 	{ }
@@ -127,8 +128,8 @@ private:
 			// (NSC800 ICR gating and IFF timing make IRQ delivery unreliable
 			// in this CPU model). The hardware latch/IRQ state is still
 			// maintained accurately for any firmware that polls it.
-			m_mainram[0x5B56] = 0x01;  // key-available flag (CPU 0x7B56)
-			m_mainram[0x5B58] = data;  // scancode (CPU 0x7B58)
+			m_mainram[0x5A56] = 0x01;  // key-available flag (CPU 0x7B56)
+			m_mainram[0x5A58] = data;  // scancode (CPU 0x7B58)
 			break;
 		default:
 			break;
@@ -278,7 +279,7 @@ private:
 	// hardware mailbox (0x7B56)/(0x7B58) to this mailbox has not been located
 	// in ROM, so the driver implements the firmware-to-application contract
 	// directly. This is the firmware API, not a hack.
-	// CPU 0x7D64 = m_mainram[0x5D64], CPU 0x7D65 = m_mainram[0x5D65].
+	// CPU 0x7D64 = m_mainram[0x5C64], CPU 0x7D65 = m_mainram[0x5C65].
 	TIMER_DEVICE_CALLBACK_MEMBER(kbd_poll) {
 		uint8_t sc = get_scancode();
 		if (sc == 0xFF) {
@@ -294,15 +295,15 @@ private:
 		// RE 2026-09-28/29: IDs 0x00-0x0B are specials (write directly).
 		// Printable keys write the ASCII/control code directly to 0x7D65
 		// (>= 0x0C dispatches to the firmware character handler).
-		m_mainram[0x5D64] = 0x01;  // menu flag (CPU 0x7D64)
+		m_mainram[0x5C64] = 0x01;  // menu flag (CPU 0x7D64)
 		if (sc <= 0x0B) {
-			m_mainram[0x5D65] = sc;    // special: ID directly (CPU 0x7D65)
+			m_mainram[0x5C65] = sc;    // special: ID directly (CPU 0x7D65)
 		} else {
 			// RE 2026-09-29: printable keys write the ASCII/control code
 			// directly to 0x7D65 (not a generic 0x0C ID). The firmware's
 			// bank-1 character routine loads it via LD BC,(0x7D65).
 			// Port 0x40 is a handshake; stage the ASCII there too.
-			m_mainram[0x5D65] = sc;    // ASCII directly (CPU 0x7D65)
+			m_mainram[0x5C65] = sc;    // ASCII directly (CPU 0x7D65)
 			m_staged_ascii = sc;       // ASCII for port 0x40 handler
 		}
 	}
@@ -315,10 +316,12 @@ private:
 	required_device<mc6845_device> m_crtc;
 	required_device<screen_device> m_screen;
 	required_memory_bank m_bank;
+	required_memory_bank m_winbank;
 	required_shared_ptr<uint8_t> m_mainram;
 	required_region_ptr<uint8_t> m_chargen;
 
 	std::unique_ptr<uint8_t[]> m_bankram;
+	std::unique_ptr<uint8_t[]> m_winram;
 	uint8_t m_icr = 0;
 	uint8_t m_regs30[16] = { 0 };
 	uint8_t m_regs50[16] = { 0 };
@@ -332,7 +335,12 @@ private:
 void hp4951b_state::mem_map(address_map &map)
 {
 	map(0x0000, 0x1fff).rom().region("maincpu", 0);
-	map(0x2000, 0x7fff).ram().share("mainram");
+	// 0x2000-0x20FF: cross-bank call window. Normally RAM, but the type-2
+	// pager (0x04/0x06) overlays the selected bank's JP table (ROM) here
+	// via PAL logic — a hardware mapping, not a copy. Writes during the
+	// window go to the RAM underneath (bank is read-only for ROM entries).
+	map(0x2000, 0x20ff).bankrw("winbank");
+	map(0x2100, 0x7fff).ram().share("mainram");
 	map(0x8000, 0xffff).bankrw("bank");
 }
 
@@ -363,33 +371,27 @@ void hp4951b_state::pager_w(uint8_t data)
 	// bank1 = 10023, bank2 = 10024 (jump-table analysis); bank0/bank3 guessed.
 	// Type-2 trampoline (L<<1): 0x04=10024, 0x06=10023 at 0x2000 window.
 	// The 0x2000-0x20FF holds JP tables for cross-bank calls (CALL 0x2009 etc.).
-	// We emulate by copying the ROM's JP table into RAM at 0x2000 when the
-	// call comes from banked code (0x8000-0xFFFF). Calls from fixed ROM during
-	// POST are hardware init, not cross-bank calls — don't poke JPs there.
+	// Hardware PAL overlays the selected bank's ROM onto the bus for 0x2000-
+	// 0x20FF — a mapping, not a copy. We emulate with the winbank: entry 0 =
+	// RAM, entry 1 = 10023 JP table, entry 2 = 10024 JP table. Calls from
+	// fixed ROM during POST are hardware init, not cross-bank calls — don't
+	// switch the window there (PC gate).
 	logerror("hp4951b: pager byte 0x%02x (PC=%04x)\n", data, m_maincpu->pc());
 	uint16_t pc = m_maincpu->pc();
 	bool from_banked = (pc >= 0x8000);
 	switch (data)
 	{
-	case 0x11: m_bank->set_entry(0); break; // banked RAM (guess)
-	case 0x01: m_bank->set_entry(1); break; // 10023 UI shell
-	case 0x10: m_bank->set_entry(2); break; // 10024 engine
-	case 0x00: m_bank->set_entry(3); break; // 10022 remote/pod (guess)
+	case 0x11: m_bank->set_entry(0); m_winbank->set_entry(0); break; // banked RAM (guess)
+	case 0x01: m_bank->set_entry(1); m_winbank->set_entry(0); break; // 10023 UI shell
+	case 0x10: m_bank->set_entry(2); m_winbank->set_entry(0); break; // 10024 engine
+	case 0x00: m_bank->set_entry(3); m_winbank->set_entry(0); break; // 10022 remote/pod (guess)
 	case 0x04:
-		if (from_banked) {
-			auto *rgn = memregion("rom24");
-			if (rgn) {
-				memcpy(&m_mainram[0], rgn->base(), 0x100);
-			}
-		}
+		// 10024 JP table at 0x2000 window (only from banked code)
+		if (from_banked) m_winbank->set_entry(2);
 		break;
 	case 0x06:
-		if (from_banked) {
-			auto *rgn = memregion("rom23");
-			if (rgn) {
-				memcpy(&m_mainram[0], rgn->base(), 0x100);
-			}
-		}
+		// 10023 JP table at 0x2000 window (only from banked code)
+		if (from_banked) m_winbank->set_entry(1);
 		break;
 	default:
 		break;
@@ -408,7 +410,7 @@ void hp4951b_state::icr_w(uint8_t data)
 MC6845_UPDATE_ROW(hp4951b_state::crtc_update_row)
 {
 	// ma already includes the R12/R13 start address (0x000 page 0, 0x200 page 1)
-	uint8_t *vram = &m_mainram[0x2000];   // CPU 0x4000-0x47FF
+	uint8_t *vram = &m_mainram[0x1F00];   // CPU 0x4000-0x47FF
 	// Character ROM bank select via attribute bit 7:
 	//   bit 7 clear: CHAR ROM 1 (10005) standard bank at 0x4000
 	//   bit 7 set:   CHAR ROM 2 (10006) alternate bank at 0x18000+0x5000
@@ -549,6 +551,19 @@ void hp4951b_state::machine_start()
 	m_bank->configure_entry(3, memregion("rom22")->base());
 	m_bank->set_entry(0);
 
+	// 0x2000-0x20FF cross-bank window: entry 0 = RAM (the physical RAM
+	// underneath), entry 1 = 10023 JP table, entry 2 = 10024 JP table.
+	// The hardware PAL overlays ROM onto the bus; writes during the window
+	// go to RAM (bankr = read-only for ROM entries, RAM entry is rw via
+	// the underlying mapping — actually bankr is read-only, so we use
+	// bankrw with RAM backing for entry 0).
+	m_winram = std::make_unique<uint8_t[]>(0x100);
+	memset(m_winram.get(), 0, 0x100);
+	m_winbank->configure_entry(0, m_winram.get());
+	m_winbank->configure_entry(1, memregion("rom23")->base());
+	m_winbank->configure_entry(2, memregion("rom24")->base());
+	m_winbank->set_entry(0);
+
 	// Workaround: POST RAM test (LDIR at 0x1CFD, called from 0x1AD8/0x1AEB)
 	// hangs MAME's NSC800 when HL==DE. The test copies 8KB from 0x2000 to
 	// 0x2000 (a no-op). Patch the CALLs to NOPs to skip it.
@@ -583,14 +598,14 @@ void hp4951b_state::dump_vram()
 	FILE *f = fopen("/tmp/hp4951b_vram.bin", "wb");
 	if (f != nullptr)
 	{
-		fwrite(&m_mainram[0x2000], 1, 0x800, f);
+		fwrite(&m_mainram[0x1F00], 1, 0x800, f);
 		fclose(f);
 	}
 	// TEMP: dump RAM around the 0x3FBF stuck-PC for analysis
 	FILE *g = fopen("/tmp/hp4951b_ram3f.bin", "wb");
 	if (g != nullptr)
 	{
-		fwrite(&m_mainram[0x1F00], 1, 0x2200, g);  // CPU 0x3F00-0x6100
+		fwrite(&m_mainram[0x1E00], 1, 0x2200, g);  // CPU 0x3F00-0x6100
 		fclose(g);
 	}
 }
