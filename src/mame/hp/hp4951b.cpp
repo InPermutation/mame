@@ -389,16 +389,17 @@ void hp4951b_state::pager_w(uint8_t data)
 	// Pager values (CONFIRMED from firmware analysis 2026-10-01):
 	// Bits 0+4 form a 2-bit bank number for the 0x8000-0xFFFF window:
 	//   0x00 (00) = RAM, 0x01 (01) = 10023, 0x10 (10) = 10024, 0x11 (11) = 10022
-	// Bit 1 (0x02) overlays the 0x2000 window with a JP table for cross-bank
-	// calls; bit 0 selects which ROM's table (0x02=10024, 0x03=10023).
 	// Type-1 trampoline table (@0xBD in fixed ROM):
 	//   index 0 -> 0x11 (10022), index 1 -> 0x01 (10023),
 	//   index 2 -> 0x10 (10024), index 3 -> 0x00 (RAM)
 	// The RAM test at 0x8B27 uses index 3 (0x00) to test RAM at 0x8000.
-	// Type-2 trampoline writes unshifted L (0x02/0x03/0x20), not the SLA'd value.
+	// Type-2 trampoline (0x00DD): LD A,L; SLA A; OUT (0x4C),A — writes the
+	// SHIFTED value. 0x04=10024 JP table, 0x06=10023 JP table at 0x2000.
+	// (CB 27 is SLA A, not SLA L — the shift is intentional.)
 	// The 0x2000-0x20FF holds JP tables for cross-bank calls (CALL 0x2009 etc.).
 	// Hardware PAL overlays the selected bank's ROM onto the bus for 0x2000-
-	// 0x20FF — a mapping, not a copy. We emulate with win_r/win_w handlers.
+	// 0x20FF — a mapping, not a copy (confirmed: CALL 200CH directly after
+	// trampoline, no LDIR). We emulate with win_r/win_w handlers.
 	// Calls from fixed ROM during POST are hardware init, not cross-bank calls —
 	// don't switch the window there (PC gate).
 	//logerror("hp4951b: pager byte 0x%02x (PC=%04x)\n", data, m_maincpu->pc());
@@ -410,11 +411,11 @@ void hp4951b_state::pager_w(uint8_t data)
 	case 0x01: m_bank->set_entry(1); m_winstate = 0; break; // 10023 UI shell
 	case 0x10: m_bank->set_entry(2); m_winstate = 0; break; // 10024 engine
 	case 0x11: m_bank->set_entry(3); m_winstate = 0; break; // 10022 remote/pod
-	case 0x02:
+	case 0x04:
 		// 10024 JP table at 0x2000 window (only from banked code)
 		if (from_banked) m_winstate = 2;
 		break;
-	case 0x03:
+	case 0x06:
 		// 10023 JP table at 0x2000 window (only from banked code)
 		if (from_banked) m_winstate = 1;
 		break;
