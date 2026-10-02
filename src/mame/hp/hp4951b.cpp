@@ -409,6 +409,7 @@ void hp4951b_state::pager_w(uint8_t data)
 	switch (data)
 	{
 	case 0x00: m_bank->set_entry(0); m_winstate = 0; break; // RAM (confirmed)
+	case 0x20: m_bank->set_entry(0); m_winstate = 0; break; // RAM? (TEMP: test if RAM tests use 0x20)
 	case 0x01: m_bank->set_entry(1); m_winstate = 0; break; // 10023 UI shell
 	case 0x10: m_bank->set_entry(2); m_winstate = 0; break; // 10024 engine
 	case 0x11: m_bank->set_entry(3); m_winstate = 0; break; // 10022 remote/pod
