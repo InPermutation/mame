@@ -343,7 +343,8 @@ void hp4951b_state::mem_map(address_map &map)
 	// selected ROM JP table (or RAM); writes always go to the RAM underneath.
 	map(0x2000, 0x20ff).rw(FUNC(hp4951b_state::win_r), FUNC(hp4951b_state::win_w));
 	map(0x2100, 0x7fff).ram().share("mainram");
-	map(0x8000, 0xffff).bankrw("bank");
+	// TEMP: no-banking test — map 0x8000-0xFFFF as plain RAM to isolate RAM test failures
+	map(0x8000, 0xffff).ram().share("bankram");
 }
 
 
@@ -402,14 +403,11 @@ void hp4951b_state::pager_w(uint8_t data)
 	// trampoline, no LDIR). We emulate with win_r/win_w handlers.
 	// Calls from fixed ROM during POST are hardware init, not cross-bank calls —
 	// don't switch the window there (PC gate).
-	// TEMP: pager write tracing for RAM test diagnosis (2026-10-01)
-	logerror("hp4951b: pager 0x%02x PC=%04x bank=%d\n", data, m_maincpu->pc(), m_bank->entry());
 	uint16_t pc = m_maincpu->pc();
 	bool from_banked = (pc >= 0x8000);
 	switch (data)
 	{
 	case 0x00: m_bank->set_entry(0); m_winstate = 0; break; // RAM (confirmed)
-	case 0x20: m_bank->set_entry(0); m_winstate = 0; break; // RAM? (TEMP: test if RAM tests use 0x20)
 	case 0x01: m_bank->set_entry(1); m_winstate = 0; break; // 10023 UI shell
 	case 0x10: m_bank->set_entry(2); m_winstate = 0; break; // 10024 engine
 	case 0x11: m_bank->set_entry(3); m_winstate = 0; break; // 10022 remote/pod
