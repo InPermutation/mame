@@ -418,6 +418,18 @@ void hp4951b_state::pager_w(uint8_t data)
 		// 10023 JP table at 0x2000 window (only from banked code)
 		if (from_banked) m_winstate = 1;
 		break;
+	case 0x20:
+		// Window = RAM (m_winstate=0). 0x20 is a window value, not a bank
+		// value — followed by 0x2000 accesses in firmware. (Already the
+		// default after bank selects, but handle explicitly.)
+		m_winstate = 0;
+		break;
+	case 0x40:
+		// Type-2 window for JP index 0x20 (L=0x20 → SLA → 0x40).
+		// Overlays current bank's JP table at 0x2000 (like 0x04/0x06).
+		if (from_banked)
+			m_winstate = (m_bank->entry() == 1) ? 1 : 2;
+		break;
 	default:
 		break;
 	}
