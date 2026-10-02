@@ -403,7 +403,8 @@ void hp4951b_state::pager_w(uint8_t data)
 	// Calls from fixed ROM during POST are hardware init, not cross-bank calls —
 	// don't switch the window there (PC gate).
 	// TEMP: pager logging for LOOP test diagnosis
-	logerror("hp4951b: pager 0x%02x PC=%04x bank=%d\n", data, m_maincpu->pc(), m_bank->entry());
+	int before = m_bank->entry();
+	logerror("hp4951b: pager 0x%02x PC=%04x bank_before=%d", data, m_maincpu->pc(), before);
 	// TEMP: verify m_bankram is accessible
 	m_bankram[0] = 0xAA;
 	m_bankram[1] = 0x55;
@@ -440,6 +441,8 @@ void hp4951b_state::pager_w(uint8_t data)
 	default:
 		break;
 	}
+	// TEMP: log bank after switch
+	logerror(" bank_after=%d\n", m_bank->entry());
 }
 
 
