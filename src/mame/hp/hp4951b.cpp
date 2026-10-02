@@ -343,8 +343,7 @@ void hp4951b_state::mem_map(address_map &map)
 	// selected ROM JP table (or RAM); writes always go to the RAM underneath.
 	map(0x2000, 0x20ff).rw(FUNC(hp4951b_state::win_r), FUNC(hp4951b_state::win_w));
 	map(0x2100, 0x7fff).ram().share("mainram");
-	// TEMP: no-banking test — map 0x8000-0xFFFF as plain RAM to isolate RAM test failures
-	map(0x8000, 0xffff).ram().share("bankram");
+	map(0x8000, 0xffff).bankrw("bank");
 }
 
 
