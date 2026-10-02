@@ -104,38 +104,11 @@ private:
 		}
 	}
 	void kbd_w(offs_t offset, uint8_t data) {
-		switch (offset & 3) {
-		case 1:  // 0xC1 control
-			if (data == 0x38) {
-				// Acknowledge: clear IRQ flip-flop (74HC74), drop INT line.
-				// Issued by the ISR on exit and by the loopback transmit setup.
-				m_kbd_irq = false;
-				m_maincpu->set_input_line(INPUT_LINE_IRQ0, CLEAR_LINE);
-			}
-			// 0xC0 = strobe/latch enable (data already latched on 0xC3 write).
-			// 0x11, 0xB0, 0x05, 0x69, 40-byte init sequence: controller
-			// configuration, not needed for emulation — ignore.
-			break;
-		case 3:  // 0xC3 data: latch byte (74HC373), assert IRQ (74HC74).
-			// Boot loopback (fixed ROM 0x1BA9) writes 01 02 03 04 05 here;
-			// the ISR echoes them via (0x7B56)/(0x7B58) and the test passes.
-			m_kbd_latch = data;
-			m_kbd_irq = true;
-			m_maincpu->set_input_line(INPUT_LINE_IRQ0, ASSERT_LINE);
-			// ISR fast-path: do the firmware ISR's job directly.
-			// The ISR (fixed ROM 0x1BBB) does IN (0xC3) -> (0x7B58),
-			// (0x7B56)=1. If the CPU takes the interrupt, the ISR will
-			// rewrite the same values (idempotent). The direct write ensures
-			// the loopback passes even if the interrupt isn't delivered
-			// (NSC800 ICR gating and IFF timing make IRQ delivery unreliable
-			// in this CPU model). The hardware latch/IRQ state is still
-			// maintained accurately for any firmware that polls it.
-			m_mainram[0x5A56] = 0x01;  // key-available flag (CPU 0x7B56)
-			m_mainram[0x5A58] = data;  // scancode (CPU 0x7B58)
-			break;
-		default:
-			break;
-		}
+		// EXPERIMENT 2026-10-02: old-style no-op hack (from 864781b).
+		// The full loopback emulation makes boot take the slow app path;
+		// the no-op makes loopback fail → fast boot to diagnostics.
+		// Testing whether RAM failures are caused by keyboard emulation
+		// vs bank switching.
 	}
 	uint8_t m_kbd_latch = 0x00;  // 74HC373 scancode latch (port 0xC3)
 	bool m_kbd_irq = false;     // 74HC74 IRQ flip-flop (cleared by OUT 0xC1=0x38)
