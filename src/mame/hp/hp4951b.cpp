@@ -56,7 +56,7 @@ private:
 	void win_w(offs_t offset, uint8_t data);
 	uint8_t bank_r(offs_t offset);
 	void bank_w(offs_t offset, uint8_t data);
-	void port48_w(uint8_t data) { /* ROM shadow mask */ }
+	void port48_w(uint8_t data) { m_port48 = data; }
 	void icr_w(uint8_t data);
 	uint8_t regs30_r(offs_t offset) { return m_regs30[offset & 0xf]; }
 	void regs30_w(offs_t offset, uint8_t data) { m_regs30[offset & 0xf] = data; }
@@ -322,6 +322,11 @@ private:
 	// 0x8000 bank state: 0=RAM, 1=10023, 2=10024, 3=10022
 	// (Replaces MAME memory_bank which wasn't switching reliably.)
 	uint8_t m_bankstate = 0;
+	// Port 0x48 value (controls fetch vs data visibility for 0x8000 bank).
+	// When 0x48=0x11 (after RAM select), instruction fetches still see ROM.
+	uint8_t m_port48 = 0;
+	// Last ROM bank selected (for fetch when 0x48 indicates ROM fetch).
+	uint8_t m_last_rom_bank = 2; // default to 10024 (engine)
 	required_shared_ptr<uint8_t> m_mainram;
 	required_region_ptr<uint8_t> m_chargen;
 
@@ -389,6 +394,24 @@ void hp4951b_state::win_w(offs_t offset, uint8_t data)
 
 uint8_t hp4951b_state::bank_r(offs_t offset)
 {
+	// Port 0x48=0x11 (after RAM select via trampoline) means instruction
+	// fetches still see ROM, while data accesses see RAM. Detect fetches
+	// by comparing the address to the CPU's PC.
+	// (Experimental: hardware likely has separate fetch/data paths.)
+	if ((m_port48 & 0x11) == 0x11 && m_bankstate == 0)
+	{
+		uint16_t pc = m_maincpu->pc();
+		if (offset + 0x8000 == pc)
+		{
+			// Instruction fetch: return from last ROM bank
+			switch (m_last_rom_bank)
+			{
+			case 1: return memregion("rom23")->base()[offset];
+			case 3: return memregion("rom22")->base()[offset];
+			default: return memregion("rom24")->base()[offset]; // 2 = 10024
+			}
+		}
+	}
 	switch (m_bankstate)
 	{
 	case 1: return memregion("rom23")->base()[offset];
@@ -428,9 +451,9 @@ void hp4951b_state::pager_w(uint8_t data)
 	switch (data)
 	{
 	case 0x00: m_bankstate = 0; m_winstate = 0; break; // RAM (confirmed)
-	case 0x01: m_bankstate = 1; m_winstate = 0; break; // 10023 UI shell
-	case 0x10: m_bankstate = 2; m_winstate = 0; break; // 10024 engine
-	case 0x11: m_bankstate = 3; m_winstate = 0; break; // 10022 remote/pod
+	case 0x01: m_bankstate = 1; m_last_rom_bank = 1; m_winstate = 0; break; // 10023 UI shell
+	case 0x10: m_bankstate = 2; m_last_rom_bank = 2; m_winstate = 0; break; // 10024 engine
+	case 0x11: m_bankstate = 3; m_last_rom_bank = 3; m_winstate = 0; break; // 10022 remote/pod
 	case 0x04:
 		// 10024 JP table at 0x2000 window (only from banked code)
 		if (from_banked) m_winstate = 2;
