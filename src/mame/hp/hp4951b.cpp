@@ -402,7 +402,8 @@ void hp4951b_state::pager_w(uint8_t data)
 	// trampoline, no LDIR). We emulate with win_r/win_w handlers.
 	// Calls from fixed ROM during POST are hardware init, not cross-bank calls —
 	// don't switch the window there (PC gate).
-	//logerror("hp4951b: pager byte 0x%02x (PC=%04x)\n", data, m_maincpu->pc());
+	// TEMP: pager write tracing for RAM test diagnosis (2026-10-01)
+	logerror("hp4951b: pager 0x%02x PC=%04x bank=%d\n", data, m_maincpu->pc(), m_bank->entry());
 	uint16_t pc = m_maincpu->pc();
 	bool from_banked = (pc >= 0x8000);
 	switch (data)
