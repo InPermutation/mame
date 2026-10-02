@@ -404,6 +404,11 @@ void hp4951b_state::pager_w(uint8_t data)
 	// don't switch the window there (PC gate).
 	// TEMP: pager logging for LOOP test diagnosis
 	logerror("hp4951b: pager 0x%02x PC=%04x bank=%d\n", data, m_maincpu->pc(), m_bank->entry());
+	// TEMP: verify m_bankram is accessible
+	m_bankram[0] = 0xAA;
+	m_bankram[1] = 0x55;
+	if (m_bankram[0] != 0xAA || m_bankram[1] != 0x55)
+		logerror("hp4951b: BANKRAM BROKEN!\n");
 	uint16_t pc = m_maincpu->pc();
 	bool from_banked = (pc >= 0x8000);
 	switch (data)
