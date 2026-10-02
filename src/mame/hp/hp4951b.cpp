@@ -37,7 +37,6 @@ public:
 		m_maincpu(*this, "maincpu"),
 		m_crtc(*this, "crtc"),
 		m_screen(*this, "screen"),
-		m_bank(*this, "bank"),
 		m_mainram(*this, "mainram"),
 		m_chargen(*this, "chargen")
 	{ }
@@ -55,6 +54,8 @@ private:
 	void pager_w(uint8_t data);
 	uint8_t win_r(offs_t offset);
 	void win_w(offs_t offset, uint8_t data);
+	uint8_t bank_r(offs_t offset);
+	void bank_w(offs_t offset, uint8_t data);
 	void port48_w(uint8_t data) { /* ROM shadow mask */ }
 	void icr_w(uint8_t data);
 	uint8_t regs30_r(offs_t offset) { return m_regs30[offset & 0xf]; }
@@ -316,9 +317,11 @@ private:
 	required_device<nsc800_device> m_maincpu;
 	required_device<mc6845_device> m_crtc;
 	required_device<screen_device> m_screen;
-	required_memory_bank m_bank;
 	// 0x2000 window state: 0=RAM, 1=10023 JP table, 2=10024 JP table
 	uint8_t m_winstate = 0;
+	// 0x8000 bank state: 0=RAM, 1=10023, 2=10024, 3=10022
+	// (Replaces MAME memory_bank which wasn't switching reliably.)
+	uint8_t m_bankstate = 0;
 	required_shared_ptr<uint8_t> m_mainram;
 	required_region_ptr<uint8_t> m_chargen;
 
@@ -343,7 +346,7 @@ void hp4951b_state::mem_map(address_map &map)
 	// selected ROM JP table (or RAM); writes always go to the RAM underneath.
 	map(0x2000, 0x20ff).rw(FUNC(hp4951b_state::win_r), FUNC(hp4951b_state::win_w));
 	map(0x2100, 0x7fff).ram().share("mainram");
-	map(0x8000, 0xffff).bankrw("bank");
+	map(0x8000, 0xffff).rw(FUNC(hp4951b_state::bank_r), FUNC(hp4951b_state::bank_w));
 }
 
 
@@ -384,6 +387,24 @@ void hp4951b_state::win_w(offs_t offset, uint8_t data)
 	m_winram[offset] = data;
 }
 
+uint8_t hp4951b_state::bank_r(offs_t offset)
+{
+	switch (m_bankstate)
+	{
+	case 1: return memregion("rom23")->base()[offset];
+	case 2: return memregion("rom24")->base()[offset];
+	case 3: return memregion("rom22")->base()[offset];
+	default: return m_bankram[offset]; // 0 = RAM
+	}
+}
+
+void hp4951b_state::bank_w(offs_t offset, uint8_t data)
+{
+	// Writes always go to RAM, even when a ROM bank is selected
+	// (hardware would ignore them; we preserve RAM contents).
+	m_bankram[offset] = data;
+}
+
 void hp4951b_state::pager_w(uint8_t data)
 {
 	// Pager values (CONFIRMED from firmware analysis 2026-10-01):
@@ -402,22 +423,14 @@ void hp4951b_state::pager_w(uint8_t data)
 	// trampoline, no LDIR). We emulate with win_r/win_w handlers.
 	// Calls from fixed ROM during POST are hardware init, not cross-bank calls —
 	// don't switch the window there (PC gate).
-	// TEMP: pager logging for LOOP test diagnosis
-	int before = m_bank->entry();
-	logerror("hp4951b: pager 0x%02x PC=%04x bank_before=%d", data, m_maincpu->pc(), before);
-	// TEMP: verify m_bankram is accessible
-	m_bankram[0] = 0xAA;
-	m_bankram[1] = 0x55;
-	if (m_bankram[0] != 0xAA || m_bankram[1] != 0x55)
-		logerror("hp4951b: BANKRAM BROKEN!\n");
 	uint16_t pc = m_maincpu->pc();
 	bool from_banked = (pc >= 0x8000);
 	switch (data)
 	{
-	case 0x00: m_bank->set_entry(0); m_winstate = 0; break; // RAM (confirmed)
-	case 0x01: m_bank->set_entry(1); m_winstate = 0; break; // 10023 UI shell
-	case 0x10: m_bank->set_entry(2); m_winstate = 0; break; // 10024 engine
-	case 0x11: m_bank->set_entry(3); m_winstate = 0; break; // 10022 remote/pod
+	case 0x00: m_bankstate = 0; m_winstate = 0; break; // RAM (confirmed)
+	case 0x01: m_bankstate = 1; m_winstate = 0; break; // 10023 UI shell
+	case 0x10: m_bankstate = 2; m_winstate = 0; break; // 10024 engine
+	case 0x11: m_bankstate = 3; m_winstate = 0; break; // 10022 remote/pod
 	case 0x04:
 		// 10024 JP table at 0x2000 window (only from banked code)
 		if (from_banked) m_winstate = 2;
@@ -428,21 +441,18 @@ void hp4951b_state::pager_w(uint8_t data)
 		break;
 	case 0x20:
 		// Window = RAM (m_winstate=0). 0x20 is a window value, not a bank
-		// value — followed by 0x2000 accesses in firmware. (Already the
-		// default after bank selects, but handle explicitly.)
+		// value — followed by 0x2000 accesses in firmware.
 		m_winstate = 0;
 		break;
 	case 0x40:
 		// Type-2 window for JP index 0x20 (L=0x20 → SLA → 0x40).
 		// Overlays current bank's JP table at 0x2000 (like 0x04/0x06).
 		if (from_banked)
-			m_winstate = (m_bank->entry() == 1) ? 1 : 2;
+			m_winstate = (m_bankstate == 1) ? 1 : 2;
 		break;
 	default:
 		break;
 	}
-	// TEMP: log bank after switch
-	logerror(" bank_after=%d\n", m_bank->entry());
 }
 
 
@@ -592,11 +602,8 @@ void hp4951b_state::machine_start()
 	m_bankram = std::make_unique<uint8_t[]>(0x8000);
 	memset(m_bankram.get(), 0, 0x8000);
 
-	m_bank->configure_entry(0, m_bankram.get());
-	m_bank->configure_entry(1, memregion("rom23")->base());
-	m_bank->configure_entry(2, memregion("rom24")->base());
-	m_bank->configure_entry(3, memregion("rom22")->base());
-	m_bank->set_entry(0);
+	// 0x8000 bank now uses explicit handlers (bank_r/bank_w) with m_bankstate,
+	// not MAME's memory_bank. m_bankstate defaults to 0 (RAM).
 
 	// 0x2000-0x20FF cross-bank window: entry 0 = RAM (the physical RAM
 	// underneath), entry 1 = 10023 JP table, entry 2 = 10024 JP table.
