@@ -562,16 +562,14 @@ MC6845_UPDATE_ROW(hp4951b_state::crtc_update_row)
 		// EN1 smoking gun: ch bit 7 selects the ROM
 		uint8_t *chip_base = (ch & 0x80) ? &m_chargen[0x8000] : &m_chargen[0x0000];
 
-		// Attribute decoding (from TEST PTRN table at bank-2 0x9BCA):
-		// 0x80=plain, 0x81=underline, 0x82=overbar, 0x83=normal,
-		// 0x87=blink, 0x8B=inverse, 0x93=cursor, 0xA3=halfbright
-		// Bit hypothesis: bit2=blink, bit3=inverse, bit4=cursor, bit5=halfbright
+		// Attribute decoding from 4951A schematic Fig 8-10 (ATTRIBUTE LATCH):
+		// CD0=OVER, CD1=UNLN, CD2=BLINK, CD3=INVID, CD4=CRSR, CD5=HB
+		bool underline = (attr & 0x01) != 0;
+		bool overbar = (attr & 0x02) != 0;
 		bool blink = (attr & 0x04) != 0;
 		bool inverse = (attr & 0x08) != 0;
 		bool cursor = (attr & 0x10) != 0;
 		bool halfbright = (attr & 0x20) != 0;
-		bool underline = (attr == 0x81);
-		bool overbar = (attr == 0x82);
 
 		// Blink: if blinking and phase is off, blank the character
 		if (blink && !blink_on)
