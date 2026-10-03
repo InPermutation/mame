@@ -559,8 +559,16 @@ MC6845_UPDATE_ROW(hp4951b_state::crtc_update_row)
 		uint8_t ch = vram[addr * 2];
 		uint8_t attr = vram[addr * 2 + 1];
 
-		// EN1 smoking gun: ch bit 7 selects the ROM
-		uint8_t *chip_base = (ch & 0x80) ? &m_chargen[0x8000] : &m_chargen[0x0000];
+		// Character ROM addressing from 4951A schematic Fig 8-10 (HW-verified):
+		// 13-bit address: A12=attr bit6 (live CD6 at SHIFT fall, not latched),
+		// A11=ch bit7 (latched C7), A10-A4=ch bits6-0 (latched C6-C0),
+		// A3-A0=ra (R3-R0 from CRTC).
+		// EN1 (chip select) = live CD7 at sample time = attr bit7:
+		//   attr bit7 set:   ROM1 (10005) — HW-verified: diag/menu attr 0x83 uses ROM1
+		//   attr bit7 clear: ROM2 (10006)
+		uint8_t *chip_base = (attr & 0x80) ? &m_chargen[0x0000] : &m_chargen[0x8000];
+		uint16_t rom_addr = ((attr & 0x40) << 6) | (ch << 4) | (ra & 0x0f);
+		uint8_t row = chip_base[rom_addr & 0x1fff];
 
 		// Attribute decoding from 4951A schematic Fig 8-10 (ATTRIBUTE LATCH):
 		// CD0=OVER - inverted, CD1=UNLN - inverted, CD2=BLINK, CD3=INVID, CD4=CRSR, CD5=HB
@@ -578,15 +586,7 @@ MC6845_UPDATE_ROW(hp4951b_state::crtc_update_row)
 			continue;
 		}
 
-		// Character ROM addressing:
-		//   chip_base is ROM1 (honest baseline; see above). ROM2 select unknown.
-		//   attr bit 6 (0x40): ROM address line A12 — 0 = 0x4000 bank, 1 = 0x5000 bank.
-		// Verified: SET1 (0x03/0x43) matches hardware on ROM1; SET2 (0x83/0xC3)
-		// shows ROM2's banks.
-		uint8_t *cg = &chip_base[(attr & 0x40) ? 0x5000 : 0x4000];
-		// CD7 is chip-select (EN1), not an address bit — mask it off.
-		// CD6-CD0 form the character address (CD6 is highest per schematic).
-		uint8_t row = cg[(ch & 0x7f) * 16 + ra];
+		// (ROM address computed above from schematic bit map)
 
 		// Cursor: rapid blink using inverse video (not blanking)
 		// When cursor phase is on, force inverse; otherwise normal
