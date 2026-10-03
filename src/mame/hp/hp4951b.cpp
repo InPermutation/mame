@@ -560,15 +560,15 @@ MC6845_UPDATE_ROW(hp4951b_state::crtc_update_row)
 		uint8_t attr = vram[addr * 2 + 1];
 
 		// Character ROM addressing from 4951A schematic Fig 8-10 (HW-verified):
-		// 13-bit address: A12=attr bit6 (live CD6 at SHIFT fall, not latched),
-		// A11=ch bit7 (latched C7), A10-A4=ch bits6-0 (latched C6-C0),
-		// A3-A0=ra (R3-R0 from CRTC).
-		// EN1 (chip select) = live CD7 at sample time = attr bit7:
+		// A12 (base select) = attr bit6: 0 -> 0x4000, 1 -> 0x5000
+		// A11 = ch bit7 (latched C7), A10-A4 = ch bits6-0 (latched C6-C0),
+		// A3-A0 = ra (R3-R0 from CRTC).
+		// EN1 (chip select) = attr bit7 (live CD7):
 		//   attr bit7 set:   ROM1 (10005) — HW-verified: diag/menu attr 0x83 uses ROM1
 		//   attr bit7 clear: ROM2 (10006)
 		uint8_t *chip_base = (attr & 0x80) ? &m_chargen[0x0000] : &m_chargen[0x8000];
-		uint16_t rom_addr = ((attr & 0x40) << 6) | (ch << 4) | (ra & 0x0f);
-		uint8_t row = chip_base[rom_addr & 0x1fff];
+		uint16_t rom_addr = ((attr & 0x40) ? 0x5000 : 0x4000) | ((ch << 4) & 0x0ff0) | (ra & 0x0f);
+		uint8_t row = chip_base[rom_addr];
 
 		// Attribute decoding from 4951A schematic Fig 8-10 (ATTRIBUTE LATCH):
 		// CD0=OVER - inverted, CD1=UNLN - inverted, CD2=BLINK, CD3=INVID, CD4=CRSR, CD5=HB
