@@ -501,10 +501,10 @@ MC6845_UPDATE_ROW(hp4951b_state::crtc_update_row)
 {
 	// ma already includes the R12/R13 start address (0x000 page 0, 0x200 page 1)
 	uint8_t *vram = &m_mainram[0x1F00];   // CPU 0x4000-0x47FF
-	// Character ROM bank select via attribute bit 7:
-	//   bit 7 clear: CHAR ROM 1 (10005) standard bank at 0x4000
-	//   bit 7 set:   CHAR ROM 2 (10006) alternate bank at 0x18000+0x5000
-	// (Per-bank selection done in the loop since attr varies per character.)
+	// Character ROM select via character code bit 7 (CD7 on EN1, HW-verified):
+	//   bit 7 clear: CHAR ROM 1 (10005)
+	//   bit 7 set:   CHAR ROM 2 (10006)
+	// (Per-character selection done in the loop since ch varies.)
 	uint32_t *p = &bitmap.pix(y);
 
 	const uint32_t fg_full = rgb_t(0x33, 0xff, 0x66);
@@ -536,27 +536,14 @@ MC6845_UPDATE_ROW(hp4951b_state::crtc_update_row)
 	bool blink_on = ((m_screen->frame_number() / (blink_period / 2)) & 1) == 0;
 	bool cursor_on = ((m_screen->frame_number() / (cursor_period / 2)) & 1) == 0;
 
-	// Character ROM select: REAL MECHANISM UNKNOWN (2026-09-30).
-	// The VRAM-pattern heuristic was removed per Jacob's direction — we need
-	// the actual hardware decode, not a guess.
-	//
-	// What we know:
-	// - Bit 6 (0x40) = A12 bank select within a ROM (HW-verified for SET1).
-	// - Bit 7 (0x80) is attribute encoding, NOT a chip-select (TEST PTRN
-	//   table at bank2 0x9BCA: 0x80=plain, 0x81=underline, 0x82=overbar,
-	//   0x83=normal, 0xA3=halfbright, etc.).
-	// - SET2 (attrs 0x83/0xC3) MUST use ROM2 (HW-verified by Jacob).
-	// - Diagnostic/menu (attr 0x83) MUST use ROM1 (HW-verified by Jacob).
-	// - Exhaustive search found NO software-visible latch: no differing I/O
-	//   writes (0x48, regs30, regs50, 0x10, 0x44-0x47, 0x4A), no OUTs in the
-	//   SET2 handler (bank2 0x9D67 = LD DE,0x8300 + VRAM fill), CRTC readback
-	//   non-functional, RAM diffs are firmware vars/stack only.
-	//
-	// Baseline: always use ROM1. CHAR SET2 will incorrectly show ROM1's
-	// glyphs until the true ROM2 selection mechanism is found (likely a PAL
-	// or discrete-logic decode on the physical board — candidate for
-	// logic-analyzer work).
-	uint8_t *chip_base = &m_chargen[0x0000];  // ROM1 (10005) — honest baseline
+	// Character ROM select: HW-VERIFIED from 4951A schematic (Fig 8-10).
+	// CD7 (character code bit 7) drives EN1 on the CHARACTER ROMs:
+	//   ch bit 7 clear: CHAR ROM 1 (10005) enabled (EN1 = !CD7)
+	//   ch bit 7 set:   CHAR ROM 2 (10006) enabled (EN1 = CD7)
+	// Bit 7 is the chip-select, NOT an attribute. The attribute byte is
+	// separate (vram[addr*2+1]); its bit 7 is part of the attribute encoding
+	// (0x80=plain, 0x81=underline, etc. per TEST PTRN table).
+	// (Selection done in the loop since ch varies per character.)
 
 	for (int x = 0; x < x_count; x++)
 	{
@@ -571,6 +558,9 @@ MC6845_UPDATE_ROW(hp4951b_state::crtc_update_row)
 
 		uint8_t ch = vram[addr * 2];
 		uint8_t attr = vram[addr * 2 + 1];
+
+		// EN1 smoking gun: ch bit 7 selects the ROM
+		uint8_t *chip_base = (ch & 0x80) ? &m_chargen[0x8000] : &m_chargen[0x0000];
 
 		// Attribute decoding (from TEST PTRN table at bank-2 0x9BCA):
 		// 0x80=plain, 0x81=underline, 0x82=overbar, 0x83=normal,
@@ -596,7 +586,9 @@ MC6845_UPDATE_ROW(hp4951b_state::crtc_update_row)
 		// Verified: SET1 (0x03/0x43) matches hardware on ROM1; SET2 (0x83/0xC3)
 		// shows ROM2's banks.
 		uint8_t *cg = &chip_base[(attr & 0x40) ? 0x5000 : 0x4000];
-		uint8_t row = cg[ch * 16 + ra];
+		// CD7 is chip-select (EN1), not an address bit — mask it off.
+		// CD6-CD0 form the character address (CD6 is highest per schematic).
+		uint8_t row = cg[(ch & 0x7f) * 16 + ra];
 
 		// Cursor: rapid blink using inverse video (not blanking)
 		// When cursor phase is on, force inverse; otherwise normal
