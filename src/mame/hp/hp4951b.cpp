@@ -367,8 +367,8 @@ void hp4951b_state::mem_map(address_map &map)
 	// pager (0x04/0x06) overlays the selected bank's JP table (ROM) here
 	// via PAL logic — a hardware mapping, not a copy. Reads come from the
 	// selected ROM JP table (or RAM); writes always go to the RAM underneath.
-	map(0x2000, 0x20ff).rw(FUNC(hp4951b_state::win_r), FUNC(hp4951b_state::win_w));
-	map(0x2100, 0x7fff).ram().share("mainram");
+	map(0x2000, 0x3fff).rw(FUNC(hp4951b_state::win_r), FUNC(hp4951b_state::win_w));
+	map(0x4000, 0x7fff).ram().share("mainram");
 	map(0x8000, 0xffff).rw(FUNC(hp4951b_state::bank_r), FUNC(hp4951b_state::bank_w));
 }
 
@@ -646,8 +646,9 @@ void hp4951b_state::machine_start()
 	// go to RAM (bankr = read-only for ROM entries, RAM entry is rw via
 	// the underlying mapping — actually bankr is read-only, so we use
 	// bankrw with RAM backing for entry 0).
-	m_winram = std::make_unique<uint8_t[]>(0x100);
-	memset(m_winram.get(), 0, 0x100);
+	// 8KB window (0x2000-0x3FFF) per 4951A schematic U103 (was 256B).
+	m_winram = std::make_unique<uint8_t[]>(0x2000);
+	memset(m_winram.get(), 0, 0x2000);
 	m_winstate = 0;
 
 	// Workaround: POST RAM test (LDIR at 0x1CFD, called from 0x1AD8/0x1AEB)
