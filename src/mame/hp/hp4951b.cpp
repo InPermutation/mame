@@ -563,9 +563,9 @@ MC6845_UPDATE_ROW(hp4951b_state::crtc_update_row)
 		uint8_t *chip_base = (ch & 0x80) ? &m_chargen[0x8000] : &m_chargen[0x0000];
 
 		// Attribute decoding from 4951A schematic Fig 8-10 (ATTRIBUTE LATCH):
-		// CD0=OVER, CD1=UNLN, CD2=BLINK, CD3=INVID, CD4=CRSR, CD5=HB
-		bool underline = (attr & 0x01) != 0;
-		bool overbar = (attr & 0x02) != 0;
+		// CD0=OVER - inverted, CD1=UNLN - inverted, CD2=BLINK, CD3=INVID, CD4=CRSR, CD5=HB
+		bool overbar = (attr & 0x01) == 0;
+		bool underline = (attr & 0x02) == 0;
 		bool blink = (attr & 0x04) != 0;
 		bool inverse = (attr & 0x08) != 0;
 		bool cursor = (attr & 0x10) != 0;
