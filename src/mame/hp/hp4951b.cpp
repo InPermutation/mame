@@ -560,14 +560,13 @@ MC6845_UPDATE_ROW(hp4951b_state::crtc_update_row)
 		uint8_t attr = vram[addr * 2 + 1];
 
 		// Character ROM addressing from 4951A schematic Fig 8-10 (HW-verified):
-		// A12 (base select) = attr bit6: 0 -> 0x4000, 1 -> 0x5000
-		// A11 = ch bit7 (latched C7), A10-A4 = ch bits6-0 (latched C6-C0),
-		// A3-A0 = ra (R3-R0 from CRTC).
+		// 13-bit address on 8KB (8192x8) chips: A12=attr bit6, A11=ch bit7
+		// (latched C7), A10-A4=ch bits6-0 (latched C6-C0), A3-A0=ra (R3-R0).
 		// EN1 (chip select) = attr bit7 (live CD7):
 		//   attr bit7 set:   ROM1 (10005) — HW-verified: diag/menu attr 0x83 uses ROM1
 		//   attr bit7 clear: ROM2 (10006)
 		uint8_t *chip_base = (attr & 0x80) ? &m_chargen[0x0000] : &m_chargen[0x8000];
-		uint16_t rom_addr = ((attr & 0x40) ? 0x5000 : 0x4000) | ((ch << 4) & 0x0ff0) | (ra & 0x0f);
+		uint16_t rom_addr = ((attr & 0x40) << 6) | ((ch << 4) & 0x0ff0) | (ra & 0x0f);
 		uint8_t row = chip_base[rom_addr];
 
 		// Attribute decoding from 4951A schematic Fig 8-10 (ATTRIBUTE LATCH):
@@ -796,8 +795,8 @@ ROM_START(hp4951b)
 	ROM_LOAD("10024.bin", 0x0000, 0x8000, CRC(89bf19d0) SHA1(25041cb7069c1f98cfd0c682220b9c91363e70ea))
 
 	ROM_REGION(0x10000, "chargen", 0)
-	ROM_LOAD("charrom1.bin", 0x0000, 0x8000, CRC(b78155f0) SHA1(97bfe16fd1130c0b50c5d6b3136a2011b79016ad))
-	ROM_LOAD("charrom2.bin", 0x8000, 0x8000, CRC(a394cccf) SHA1(8c17633b7308db51c9b42690aa6757fc5e102a89))
+	ROM_LOAD("charrom1.bin", 0x0000, 0x2000, CRC(c809c50f) SHA1(3628d9846a398d9c4a56011989642357775b535b))
+	ROM_LOAD("charrom2.bin", 0x8000, 0x2000, CRC(889b73bf) SHA1(d554377befbcf914ac6da47146d47da4887b69b4))
 ROM_END
 
 } // anonymous namespace
