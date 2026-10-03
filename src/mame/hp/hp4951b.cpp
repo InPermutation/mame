@@ -60,7 +60,10 @@ private:
 		// Piezo buzzer (port 0x47): 0x00 = off, 0x20 = beep.
 		// Logs POST progress: each beep = a passed test step.
 		// (B) I/O Timer, (C) Dual-port RAM & arbiter, (D) CRT controller.
-		logerror("hp4951b: BUZZER %s (PC=%04x)\n", data ? "BEEP" : "off", m_maincpu->pc());
+		// Cycle count included to debug BEEP-before-off ordering anomaly.
+		logerror("hp4951b: BUZZER %s (PC=%04x, cycles=%llu)\n",
+			data ? "BEEP" : "off", m_maincpu->pc(),
+			(unsigned long long)m_maincpu->total_cycles());
 	}
 	void port48_w(uint8_t data) { m_port48 = data; }
 	void icr_w(uint8_t data);
