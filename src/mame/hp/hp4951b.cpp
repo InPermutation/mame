@@ -254,7 +254,7 @@ private:
 		uint8_t key5 = ioport("KEY5")->read();
 		if (key5 & 0x01) return apply_mods('o');
 		if (key5 & 0x02) return apply_mods('p');
-		if (key5 & 0x04) return apply_mods('a');
+		if (key5 & 0x04) return 0x21;  // 'A' key: matrix row 4, col 1 (HW-verified)
 		if (key5 & 0x08) return apply_mods('s');
 		if (key5 & 0x10) return apply_mods('d');
 		if (key5 & 0x20) return apply_mods('f');
