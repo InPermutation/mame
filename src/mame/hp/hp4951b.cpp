@@ -450,7 +450,7 @@ void hp4951b_state::pager_w(uint8_t data)
 	bool from_banked = (pc >= 0x8000);
 	switch (data)
 	{
-	case 0x00: m_bankstate = 0; m_winstate = 0; break; // RAM (confirmed)
+	case 0x00: m_bankstate = 2; m_winstate = 0; break; // EXPERIMENT: 0x00 = default ROM (10024), not RAM
 	case 0x01: m_bankstate = 1; m_last_rom_bank = 1; m_winstate = 0; break; // 10023 UI shell
 	case 0x10: m_bankstate = 2; m_last_rom_bank = 2; m_winstate = 0; break; // 10024 engine
 	case 0x11: m_bankstate = 3; m_last_rom_bank = 3; m_winstate = 0; break; // 10022 remote/pod
