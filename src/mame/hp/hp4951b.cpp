@@ -56,6 +56,12 @@ private:
 	void win_w(offs_t offset, uint8_t data);
 	uint8_t bank_r(offs_t offset);
 	void bank_w(offs_t offset, uint8_t data);
+	void port47_w(uint8_t data) {
+		// Piezo buzzer (port 0x47): 0x00 = off, 0x20 = beep.
+		// Logs POST progress: each beep = a passed test step.
+		// (B) I/O Timer, (C) Dual-port RAM & arbiter, (D) CRT controller.
+		logerror("hp4951b: BUZZER %s (PC=%04x)\n", data ? "BEEP" : "off", m_maincpu->pc());
+	}
 	void port48_w(uint8_t data) { m_port48 = data; }
 	void icr_w(uint8_t data);
 	uint8_t regs30_r(offs_t offset) { return m_regs30[offset & 0xf]; }
@@ -366,6 +372,7 @@ void hp4951b_state::io_map(address_map &map)
 	map(0x30, 0x33).rw(FUNC(hp4951b_state::scc_r), FUNC(hp4951b_state::scc_w));
 	map(0x34, 0x3f).rw(FUNC(hp4951b_state::regs30_r), FUNC(hp4951b_state::regs30_w));
 	map(0x40, 0x40).rw(FUNC(hp4951b_state::kbd_data_r), FUNC(hp4951b_state::kbd_data_w));
+	map(0x47, 0x47).w(FUNC(hp4951b_state::port47_w));
 	map(0x48, 0x48).w(FUNC(hp4951b_state::port48_w));
 	map(0xc0, 0xc3).rw(FUNC(hp4951b_state::kbd_r), FUNC(hp4951b_state::kbd_w));
 	map(0x4c, 0x4c).w(FUNC(hp4951b_state::pager_w));
