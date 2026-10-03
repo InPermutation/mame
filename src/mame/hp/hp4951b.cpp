@@ -49,9 +49,7 @@ protected:
 private:
 	void dump_vram();
 	void mem_map(address_map &map);
-	void opcode_map(address_map &map);
 	void io_map(address_map &map);
-	uint8_t opcode_r(offs_t offset);
 
 	void pager_w(uint8_t data);
 	uint8_t win_r(offs_t offset);
@@ -356,18 +354,6 @@ void hp4951b_state::mem_map(address_map &map)
 	map(0x8000, 0xffff).rw(FUNC(hp4951b_state::bank_r), FUNC(hp4951b_state::bank_w));
 }
 
-// Opcode map (AS_OPCODES): instruction fetches from 0x8000-0xFFFF always
-// see ROM, never RAM. The hardware uses Z80 /M1 to select ROM for fetches
-// while data accesses go to RAM (when pager=0x00). This lets the RAM test
-// (which switches to RAM then executes from the same addresses) work.
-void hp4951b_state::opcode_map(address_map &map)
-{
-	map(0x0000, 0x1fff).rom().region("maincpu", 0);
-	map(0x2000, 0x20ff).r(FUNC(hp4951b_state::win_r));
-	map(0x2100, 0x7fff).ram().share("mainram");
-	map(0x8000, 0xffff).r(FUNC(hp4951b_state::opcode_r));
-}
-
 
 void hp4951b_state::io_map(address_map &map)
 {
@@ -408,30 +394,30 @@ void hp4951b_state::win_w(offs_t offset, uint8_t data)
 
 uint8_t hp4951b_state::bank_r(offs_t offset)
 {
-	// Data reads: RAM when bankstate=0, else ROM.
-	// (Instruction fetches use opcode_map, which always returns ROM.)
+	// Port 0x48=0x11 (after RAM select via trampoline) means instruction
+	// fetches still see ROM, while data accesses see RAM. Detect fetches
+	// by comparing the address to the CPU's PC.
+	// (Experimental: hardware likely has separate fetch/data paths.)
+	if ((m_port48 & 0x11) == 0x11 && m_bankstate == 0)
+	{
+		uint16_t pc = m_maincpu->pc();
+		if (offset + 0x8000 == pc)
+		{
+			// Instruction fetch: return from last ROM bank
+			switch (m_last_rom_bank)
+			{
+			case 1: return memregion("rom23")->base()[offset];
+			case 3: return memregion("rom22")->base()[offset];
+			default: return memregion("rom24")->base()[offset]; // 2 = 10024
+			}
+		}
+	}
 	switch (m_bankstate)
 	{
 	case 1: return memregion("rom23")->base()[offset];
 	case 2: return memregion("rom24")->base()[offset];
 	case 3: return memregion("rom22")->base()[offset];
 	default: return m_bankram[offset]; // 0 = RAM
-	}
-}
-
-uint8_t hp4951b_state::opcode_r(offs_t offset)
-{
-	// Instruction fetches from 0x8000-0xFFFF always see ROM, never RAM.
-	// When bankstate=0 (RAM selected for data), use the last ROM bank
-	// for fetches (the ROM containing the currently executing code).
-	uint8_t rom = m_bankstate;
-	if (rom == 0)
-		rom = m_last_rom_bank;
-	switch (rom)
-	{
-	case 1: return memregion("rom23")->base()[offset];
-	case 3: return memregion("rom22")->base()[offset];
-	default: return memregion("rom24")->base()[offset]; // 2 = 10024
 	}
 }
 
@@ -780,7 +766,6 @@ void hp4951b_state::hp4951b(machine_config &config)
 {
 	NSC800(config, m_maincpu, 4_MHz_XTAL);
 	m_maincpu->set_addrmap(AS_PROGRAM, &hp4951b_state::mem_map);
-	m_maincpu->set_addrmap(AS_OPCODES, &hp4951b_state::opcode_map);
 	m_maincpu->set_addrmap(AS_IO, &hp4951b_state::io_map);
 
 	SCREEN(config, m_screen);
