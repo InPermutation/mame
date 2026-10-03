@@ -147,6 +147,7 @@ private:
 		}
 	}
 	uint8_t m_kbd_latch = 0x00;  // 74HC373 scancode latch (port 0xC3)
+	uint8_t m_kbd_matrix_latch = 0x00;  // 74HC373 matrix drive latch (I/O 0x3800-0x3FFF, segment decoder output 3)
 	bool m_kbd_irq = false;     // 74HC74 IRQ flip-flop (cleared by OUT 0xC1=0x38)
 	// IRQ acknowledge: the keyboard vector byte is hardwired to 0x4C.
 	// (IM 2: CPU forms handler address from I (0x79) + vector byte.)
@@ -156,6 +157,14 @@ private:
 	// then writes the ID back as acknowledge via OUT (0x40),A.
 	uint8_t kbd_data_r() { return m_staged_ascii; }
 	void kbd_data_w(uint8_t data) { /* ack: ID written back, ignore */ }
+	// I/O 0x3800-0x3FFF: keyboard matrix drive latch (74HC373).
+	// Segment decoder output 3: A15=0,A14=0,A13=1,A12=1,A11=1.
+	// Firmware writes the column/row drive pattern here, then reads
+	// the matrix response via RIOT PB0-PB7 (R0-R7).
+	void kbd_matrix_w(uint8_t data) {
+		m_kbd_matrix_latch = data;
+		// TODO: drive the matrix and compute PB response
+	}
 	// Helper: apply Shift/Ctrl modifiers to a base ASCII code.
 	// Ctrl+key generates the control code per the keycap labels
 	// (Q=DC1, [=ESC, ]=GS, \=FS, @=NUL, etc.)
@@ -381,6 +390,10 @@ void hp4951b_state::io_map(address_map &map)
 	map(0x4c, 0x4c).w(FUNC(hp4951b_state::pager_w));
 	map(0x50, 0x5f).rw(FUNC(hp4951b_state::regs50_r), FUNC(hp4951b_state::regs50_w));
 	map(0xbb, 0xbb).w(FUNC(hp4951b_state::icr_w));
+	// Keyboard matrix drive latch: segment decoder output 3.
+	// 16-bit I/O, A15=0,A14=0,A13=1,A12=1,A11=1 → 0x3800-0x3FFF (A10-A0 don't care).
+	// Overrides the 8-bit global_mask above.
+	map(0x3800, 0x3fff).w(FUNC(hp4951b_state::kbd_matrix_w)).mask(0xffff);
 }
 
 
