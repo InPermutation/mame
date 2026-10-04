@@ -346,7 +346,7 @@ uint8_t hp4951b_state::win_r(offs_t offset)
 	} else {
 		int page = (m_porta >> 1) & 0x03;  // PA1=bit1, PA2=bit2
 		uint32_t rom_offset = (page << 13) | (offset & 0x1fff);
-		return memregion("rom24")->base()[rom_offset];
+		return memregion("rom22")->base()[rom_offset];  // U103 = 10022
 	}
 }
 
