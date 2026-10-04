@@ -103,13 +103,14 @@ private:
 		}
 	}
 	// Keyboard matrix interface (ports 0xC0-0xC3) — discrete TTL, no MCU.
-	// 74HC373 (scancode latch) at 0xC3, 74HC74 (IRQ flip-flop) cleared via 0xC1.
-	// 0xC1 status: bit4=ready (IRQ pending), bit5=ERROR (0 = no error).
-	// The firmware ISR (fixed ROM 0x1BBB, IM2 vector 0x4C) does:
+	// 74HC373 (scancode latch) at 0xC3.
+	// 0xC1 status: bit4=ready (key available), bit5=ERROR (0 = no error).
+	// The firmware poll routine (fixed ROM 0x1BBB) does:
 	//   IN (0xC3) -> (0x7B58), (0x7B56)=1, OUT (0xC1)=0x38 (ack).
+	// No IRQ: the hardware scanner sets ready, firmware polls.
 	uint8_t kbd_r(offs_t offset) {
 		switch (offset & 3) {
-			case 1: return m_kbd_irq ? 0x10 : 0x00;  // ready iff IRQ pending, no error
+			case 1: return m_kbd_ready ? 0x10 : 0x00;  // ready iff key available, no error
 			case 3: return m_kbd_latch;  // 74HC373 scancode latch
 			default: return 0x00;
 		}
@@ -118,42 +119,24 @@ private:
 		switch (offset & 3) {
 		case 1:  // 0xC1 control
 			if (data == 0x38) {
-				// Acknowledge: clear IRQ flip-flop (74HC74), drop INT line.
-				// Issued by the ISR on exit and by the loopback transmit setup.
-				m_kbd_irq = false;
-				m_maincpu->set_input_line(INPUT_LINE_IRQ0, CLEAR_LINE);
+				// Acknowledge: clear ready flag.
+				// Issued by the firmware after reading the scancode.
+				m_kbd_ready = false;
 			}
-			// 0xC0 = strobe/latch enable (data already latched on 0xC3 write).
-			// 0x11, 0xB0, 0x05, 0x69, 40-byte init sequence: controller
-			// configuration, not needed for emulation — ignore.
 			break;
-		case 3:  // 0xC3 data: latch byte (74HC373), assert IRQ (74HC74).
-			// Boot loopback (fixed ROM 0x1BA9) writes 01 02 03 04 05 here;
-			// the ISR echoes them via (0x7B56)/(0x7B58) and the test passes.
+		case 3:  // 0xC3 data: latch scancode (74HC373), set ready.
+			// Hardware scanner puts the decoded scancode here;
+			// firmware polls 0xC1 bit4, reads 0xC3, acks via 0xC1.
 			m_kbd_latch = data;
-			m_kbd_irq = true;
-			m_maincpu->set_input_line(INPUT_LINE_IRQ0, ASSERT_LINE);
-			// ISR fast-path: do the firmware ISR's job directly.
-			// The ISR (fixed ROM 0x1BBB) does IN (0xC3) -> (0x7B58),
-			// (0x7B56)=1. If the CPU takes the interrupt, the ISR will
-			// rewrite the same values (idempotent). The direct write ensures
-			// the loopback passes even if the interrupt isn't delivered
-			// (NSC800 ICR gating and IFF timing make IRQ delivery unreliable
-			// in this CPU model). The hardware latch/IRQ state is still
-			// maintained accurately for any firmware that polls it.
-			m_mainram[0x3B56] = 0x01;  // key-available flag (CPU 0x7B56)
-			m_mainram[0x3B58] = data;  // scancode (CPU 0x7B58)
+			m_kbd_ready = true;
 			break;
 		default:
 			break;
 		}
 	}
 	uint8_t m_kbd_latch = 0x00;  // 74HC373 scancode latch (port 0xC3)
-	uint8_t m_kbd_matrix_latch = 0x00;  // 74HC373 matrix drive latch (U302 output 3, 0x3800-0x3FFF)
-	bool m_kbd_irq = false;     // 74HC74 IRQ flip-flop (cleared by OUT 0xC1=0x38)
-	// IRQ acknowledge: the keyboard vector byte is hardwired to 0x4C.
-	// (IM 2: CPU forms handler address from I (0x79) + vector byte.)
-	int kbd_irq_ack(device_t &device, int irqline) { return 0x4C; }
+	bool m_kbd_ready = false;   // key available (0xC1 bit4), cleared by OUT 0xC1=0x38
+	uint8_t m_kbd_matrix_latch = 0x00;  // 74HC373 matrix drive latch (U302 output 3, 0x3800-0x3FFF, write-only side effect)
 	// Port 0x40: keyboard data port for handler 2 (RE 2026-09-28).
 	// Hardware stages ASCII here; firmware reads it via IN A,(0x40),
 	// then writes the ID back as acknowledge via OUT (0x40),A.
@@ -305,20 +288,16 @@ private:
 		if (sc == m_last_sc)
 			return;
 		m_last_sc = sc;
-		// Menu interface: 0x7D64 (flag) / 0x7D65 (ID).
-		// RE 2026-09-28/29: IDs 0x00-0x0B are specials (write directly).
-		// Printable keys write the ASCII/control code directly to 0x7D65
-		// (>= 0x0C dispatches to the firmware character handler).
-		m_mainram[0x3D64] = 0x01;  // menu flag (CPU 0x7D64)
-		if (sc <= 0x0B) {
-			m_mainram[0x3D65] = sc;    // special: ID directly (CPU 0x7D65)
-		} else {
-			// RE 2026-09-29: printable keys write the ASCII/control code
-			// directly to 0x7D65 (not a generic 0x0C ID). The firmware's
-			// bank-1 character routine loads it via LD BC,(0x7D65).
-			// Port 0x40 is a handshake; stage the ASCII there too.
-			m_mainram[0x3D65] = sc;    // ASCII directly (CPU 0x7D65)
-			m_staged_ascii = sc;       // ASCII for port 0x40 handler
+		// Hardware model: MAME key -> scancode into 0xC3 latch, set ready.
+		// Firmware's 0x1BBB routine (polled, not ISR) does IN (0xC3),
+		// writes to mailbox 0x7B58/0x7B56, acks via OUT (0xC1)=0x38.
+		// No direct mailbox writes; no IRQ.
+		kbd_w(3, sc);
+		// Port 0x40 handshake: stage the ASCII for the firmware's
+		// character handler (bank-1 routine loads via LD BC,(0x7D65)).
+		// TODO: remove once the 0xC3 path is verified for printables.
+		if (sc > 0x0B) {
+			m_staged_ascii = sc;
 		}
 	}
 	uint8_t regs50_r(offs_t offset) { return m_regs50[offset & 0xf]; }
@@ -696,15 +675,11 @@ void hp4951b_state::machine_start()
 		}
 	}
 
-	// Keyboard IRQ: Z80 IM 2, vector 0x4C -> ISR at fixed ROM 0x1BBB.
-	// The 74HC74 IRQ flip-flop asserts INT; the vector byte is hardwired.
-	m_maincpu->set_irq_acknowledge_callback(*this, FUNC(hp4951b_state::kbd_irq_ack));
-
 	machine().add_notifier(MACHINE_NOTIFY_EXIT, machine_notify_delegate(&hp4951b_state::dump_vram, this));
 
 	save_item(NAME(m_icr));
 	save_item(NAME(m_kbd_latch));
-	save_item(NAME(m_kbd_irq));
+	save_item(NAME(m_kbd_ready));
 }
 
 
