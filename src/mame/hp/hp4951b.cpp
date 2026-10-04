@@ -113,7 +113,7 @@ private:
 	uint8_t kbd_r(offs_t offset) {
 		switch (offset & 3) {
 			case 3: {
-				uint8_t sc = get_scancode();
+				uint8_t sc = get_host_key_matrix_position();
 				if (sc != 0xFF)
 					return sc;  // hardware scanner: current key
 				return m_kbd_latch;  // boot test: latched pattern
@@ -192,12 +192,11 @@ private:
 		return base;
 	}
 	// Helper: check MAME inputs, return scancode (0xFF = no key).
-	// Softkeys/cursors return 0x00-0x0B; ASCII keys return ASCII codes.
-	// NOTE: 0x00 is EXIT (a real key per the 0xA14A label table), so the
-	// idle sentinel is 0xFF (fixes kbd-exit-dead).
-	// RE 2026-09-28: Printable keys use ID 0x0C + ASCII on port 0x40.
-	// See KEYBOARD_RE_STASH.md for the handler-2 mechanism.
-	uint8_t get_scancode() {
+	// Host-to-emulator bridge: poll MAME input ports (KEY0-KEY8) and return
+	// the HP 4951A matrix position (row*8+col) for the currently pressed
+	// host key, or 0xFF if none. The discrete hardware scanner would output
+	// this scancode to the 0xC3 latch; we model the result, not the scan.
+	uint8_t get_host_key_matrix_position() {
 		uint8_t key0 = ioport("KEY0")->read();
 		uint8_t key1 = ioport("KEY1")->read();
 		if (key0 & 0x01) return 0x00;      // EXIT (0,0)
