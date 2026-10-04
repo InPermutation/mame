@@ -2,19 +2,30 @@
 // copyright-holders:Thumb (experimental bring-up)
 /*
 
-    HP 4951B Protocol Analyzer — minimal boot-to-banner bring-up.
+    HP 4951B Protocol Analyzer — MAME driver.
 
-    CPU: National NSC800 (Z80 instruction set; MAME has nsc800_device)
-    CRTC: MC6845 at I/O 0x08 (index) / 0x09 (data), readback at 0x0B
-    ROM:  10021 fixed at 0x0000-0x1FFF
-    RAM:  0x2000-0x7FFF always mapped (VRAM 0x4000-0x47FF, 2 pages)
-    Bank: 0x8000-0xFFFF window, pager at I/O 0x4C
-            0x01 -> 10023 (UI shell)      0x10 -> 10024 (engine)
-            0x11 -> banked RAM (guess)    0x00 -> 10022 (guess)
-    ICR:  NSC800 interrupt control register at I/O 0xBB (driver-side mask)
+    Reference: HP 4951B Service Manual (04951-900xx), Figures 8-7/8-8/8-18/8-21/8-27/8-31.
 
-    Deliberately unimplemented for now: keyboard, SCC, ACIA, PIC,
-    timer cluster, tape-board MCU. Unmapped I/O reads return 0xFF.
+    CPU: National NSC800 @ 4MHz (Z80 instruction set)
+    CRTC: MC6845 at I/O 0x08 (index) / 0x09 (data)
+    RIOT: NSC810 at I/O 0x40-0x5F (Port A/B/C, timers)
+      Port A drives memory decode:
+        PA0/PA4 -> U207: 0x8000 bank (00=RAM U201-U204, 01=10023/U200, 10=10024/U205, 11=U100 RAM)
+        PA6     -> U206: 0x2000 M2A (ROM 2/U103/10022) vs M2B (RAM 2/U104)
+        PA1/PA2 -> U103: ROM 2 page select (4x 8KB)
+      Port B (0x41): keyboard matrix columns
+      Port C: PC3=buzzer, PC1=RSTB ack
+    Keyboard: 0x18-0x1F (U302 Y3) latch -> R0-R7 rows; RSTB on R1/R5/R6/R7 (softkeys)
+    I/O decode: U302 (A11-A15), byte-backwards (port on A8-A15, MAME abstracts)
+
+    Memory map (Fig 8-7):
+      0x0000: ROM 0 (U101/10021, 8KB)
+      0x2000: ROM 2 (U103/10022, 32KB, PA1/PA2 pages) or RAM 2 (U104, 8KB, PA6)
+      0x4000: RAM 4 (VRAM, dual-port, 8KB)
+      0x6000: RAM 6 (U105, 8KB)
+      0x8000: RAM B/A/C/E (U204/U203/U202/U201, 32KB) or ROM 8-2/8-1 (U200/10023, U205/10024)
+
+    Interrupts (Fig 8-14): RSTA=Tic Clock, RSTB=softkey, RSTC=Tape, INTR=DLC, NMI=power-fail.
 
 */
 
