@@ -60,7 +60,7 @@ private:
 	void win_w(offs_t offset, uint8_t data);
 	uint8_t bank_r(offs_t offset);
 	void bank_w(offs_t offset, uint8_t data);
-	uint8_t m_portc = 0x00;  // 810 Port C output latch (PC3 = buzzer)
+	uint8_t m_portc = 0x00;  // 810 Port C output latch (PC3 = buzzer, PC6 = ?)
 	uint8_t m_porta = 0x00;  // 810 Port A output latch (PA0/PA4 = 0x8000 bank, PA1/PA2 = 0x2000 window)
 	void portc_update() {
 		logerror("hp4951b: BUZZER %s (PC=%04x, cycles=%llu)\n",
@@ -227,7 +227,7 @@ private:
 	// Port 0x48 value (controls fetch vs data visibility for 0x8000 bank).
 	// When 0x48=0x11 (after RAM select), instruction fetches still see ROM.
 	// Last ROM bank selected (for fetch when 0x48 indicates ROM fetch).
-	uint8_t m_last_rom_bank = 2; // default to 10024 (engine)
+	uint8_t m_last_rom_bank = 2; // default to PA0=0,PA4=1 (10024/U205)
 	required_shared_ptr<uint8_t> m_mainram;
 	required_region_ptr<uint8_t> m_chargen;
 
@@ -244,10 +244,9 @@ private:
 void hp4951b_state::mem_map(address_map &map)
 {
 	map(0x0000, 0x1fff).rom().region("maincpu", 0);
-	// 0x2000-0x20FF: cross-bank call window. Normally RAM, but the type-2
-	// pager (0x04/0x06) overlays the selected bank's JP table (ROM) here
-	// via PAL logic — a hardware mapping, not a copy. Reads come from the
-	// selected ROM JP table (or RAM); writes always go to the RAM underneath.
+	// 0x2000-0x3FFF: U206 decodes M2A (ROM 2/U103) vs M2B (RAM 2/U104) via PA6.
+	// PA6=0 → ROM 2 (10022), PA1/PA2 select 1 of 4 8KB pages.
+	// PA6=1 → RAM 2 (APPLICATION RAM).
 	map(0x2000, 0x3fff).rw(FUNC(hp4951b_state::win_r), FUNC(hp4951b_state::win_w));
 	map(0x4000, 0x7fff).ram().share("mainram");
 	map(0x8000, 0xffff).rw(FUNC(hp4951b_state::bank_r), FUNC(hp4951b_state::bank_w));
@@ -257,13 +256,10 @@ void hp4951b_state::mem_map(address_map &map)
 
 void hp4951b_state::io_map(address_map &map)
 {
-	// 16-bit I/O with hardware-accurate decode.
-	// U302 output 3 (keyboard matrix latch) captures D0-D7 on ANY I/O write
-	// where A15=0,A14=0,A13=1,A12=1,A11=1 (0x3800-0x3FFF), even if an 8-bit
-	// port also decodes the low byte. The hardware bus "conflict" is harmless:
-	// the firmware always writes the latch deliberately before scanning.
-	// 8-bit ports decode A7-A0 only.
-	map(0x0000, 0xffff).rw(FUNC(hp4951b_state::io_r), FUNC(hp4951b_state::io_w));
+	// 8-bit I/O ports (0x00-0xFF). The 4951B places the port number on
+	// A8-A15 (Fig 8-18), but MAME abstracts this to the 8-bit port number.
+	// U302 (A11-A15) + device (A8-A9) decode is modeled in io_r/io_w.
+	map(0x0000, 0x00ff).rw(FUNC(hp4951b_state::io_r), FUNC(hp4951b_state::io_w));
 }
 
 uint8_t hp4951b_state::io_r(offs_t offset)
@@ -333,9 +329,9 @@ void hp4951b_state::io_w(offs_t offset, uint8_t data)
 }
 
 
-// 0x2000-0x20FF cross-bank call window: reads come from the selected ROM's
+// 0x2000-0x3FFF (U206): reads come from ROM 2 (PA6=0) or RAM 2 (PA6=1).
 // JP table (or the underlying RAM); writes always land in the RAM underneath,
-// never in ROM. This models the PAL mapping, not a memcpy.
+// never in ROM. This models the U206/U207 mapping, not a memcpy.
 uint8_t hp4951b_state::win_r(offs_t offset)
 {
 	// U206 (Fig 8-21): PA6 selects M2A (ROM 2/U103) vs M2B (RAM 2/U104).
@@ -352,8 +348,12 @@ uint8_t hp4951b_state::win_r(offs_t offset)
 
 void hp4951b_state::win_w(offs_t offset, uint8_t data)
 {
-	// Writes go to RAM 2 (U104) underneath; ROM 2 (U103) is read-only.
-	m_winram[offset] = data;
+	// U206: PA6=1 selects RAM 2 (U104/M2B). PA6=0 selects ROM 2 (U103/M2A).
+	// Writes to ROM are ignored by hardware (no RAM underneath in ROM mode).
+	if (m_porta & 0x40) {
+		m_winram[offset] = data;
+	}
+	// PA6=0: ROM selected, writes ignored.
 }
 
 uint8_t hp4951b_state::bank_r(offs_t offset)
@@ -385,8 +385,9 @@ uint8_t hp4951b_state::bank_r(offs_t offset)
 
 void hp4951b_state::bank_w(offs_t offset, uint8_t data)
 {
-	// Writes always go to RAM, even when a ROM bank is selected
-	// (hardware would ignore them; we preserve RAM contents).
+	// U207: writes to 0x8000-0xFFFF go to the RAM chips (U201-U204).
+	// Behavior when a ROM bank is selected is unverified; we preserve
+	// RAM contents (hardware may ignore the write).
 	m_bankram[offset] = data;
 }
 
@@ -402,8 +403,8 @@ void hp4951b_state::pager_w(uint8_t data)
 	// Type-2 trampoline (0x00DD): LD A,L; SLA A; OUT (0x4C),A — writes the
 	// SHIFTED value. 0x04=10024 JP table, 0x06=10023 JP table at 0x2000.
 	// (CB 27 is SLA A, not SLA L — the shift is intentional.)
-	// The 0x2000-0x20FF holds JP tables for cross-bank calls (CALL 0x2009 etc.).
-	// Hardware PAL overlays the selected bank's ROM onto the bus for 0x2000-
+	// The 0x2000-0x3FFF window holds ROM 2 (U103/10022) or RAM 2 (U104).
+	// U206 overlays the selected ROM onto the bus for 0x2000-
 	// 0x20FF — a mapping, not a copy (confirmed: CALL 200CH directly after
 	// trampoline, no LDIR). We emulate with win_r/win_w handlers.
 	// Calls from fixed ROM during POST are hardware init, not cross-bank calls —
@@ -413,8 +414,8 @@ void hp4951b_state::pager_w(uint8_t data)
 	switch (data & 0x11)
 	{
 	case 0x00: m_bankstate = 0; break; // RAM (U201-U204)
-	case 0x01: m_bankstate = 1; m_last_rom_bank = 1; break; // 10023 (U200)
-	case 0x10: m_bankstate = 2; m_last_rom_bank = 2; break; // 10024 (U205)
+	case 0x01: m_bankstate = 1; m_last_rom_bank = 1; break; // PA0=1,PA4=0 (10023/U200)
+	case 0x10: m_bankstate = 2; m_last_rom_bank = 2; break; // PA0=0,PA4=1 (10024/U205)
 	case 0x11: m_bankstate = 3; break; // U100 RAM (option slot)
 	default:
 		break;
@@ -562,7 +563,7 @@ void hp4951b_state::machine_start()
 
 	// 0x2000-0x20FF cross-bank window: entry 0 = RAM (the physical RAM
 	// underneath), entry 1 = 10023 JP table, entry 2 = 10024 JP table.
-	// The hardware PAL overlays ROM onto the bus; writes during the window
+	// U206 overlays ROM onto the bus; writes during the window
 	// go to RAM (bankr = read-only for ROM entries, RAM entry is rw via
 	// the underlying mapping — actually bankr is read-only, so we use
 	// bankrw with RAM backing for entry 0).
