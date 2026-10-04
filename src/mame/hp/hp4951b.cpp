@@ -618,6 +618,7 @@ void hp4951b_state::machine_start()
 
 	save_item(NAME(m_portc));
 	save_item(NAME(m_porta));
+        logerror("machine_start!\n");
 }
 
 void hp4951b_state::machine_reset()
@@ -627,6 +628,7 @@ void hp4951b_state::machine_reset()
 	m_kbd_irq_asserted = false;
 	m_maincpu->set_input_line(NSC800_RSTB, CLEAR_LINE);
 	m_kbd_matrix_latch = 0xFF;
+        logerror("machine_reset!\n");
 }
 
 
