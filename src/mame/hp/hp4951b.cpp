@@ -438,6 +438,7 @@ TIMER_DEVICE_CALLBACK_MEMBER(hp4951b_state::softkey_tick)
 	// 1KRO: only latch if exactly one row active.
 	if (rows >= 1 && !m_kbd_irq_asserted) {
 		m_kbd_irq_asserted = true;
+		logerror("hp4951b: RSTB ASSERT (softkey), pc=%04x\n", m_maincpu->pc());
 		m_maincpu->set_input_line(NSC800_RSTB, ASSERT_LINE);
 	}
 }
