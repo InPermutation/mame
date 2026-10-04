@@ -439,8 +439,7 @@ TIMER_DEVICE_CALLBACK_MEMBER(hp4951b_state::softkey_tick)
 	if (soft & 0x80) rows++;  // R7
 
 	// 1KRO: only latch if exactly one row active.
-	// ICR bit 1 (0xBB) gates RSTB; don't trigger if firmware hasn't enabled it.
-	if (rows >= 1 && !m_kbd_irq_asserted && (m_icr & 0x02)) {
+	if (rows >= 1 && !m_kbd_irq_asserted) {
 		m_kbd_irq_asserted = true;
 		m_maincpu->set_input_line(NSC800_RSTB, ASSERT_LINE);
 	}
