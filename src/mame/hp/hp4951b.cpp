@@ -570,22 +570,6 @@ void hp4951b_state::machine_start()
 	memset(m_winram.get(), 0, 0x2000);
 	m_winstate = 0;
 
-	// Workaround: POST RAM test (LDIR at 0x1CFD, called from 0x1AD8/0x1AEB)
-	// hangs MAME's NSC800 when HL==DE. The test copies 8KB from 0x2000 to
-	// 0x2000 (a no-op). Patch the CALLs to NOPs to skip it.
-	auto *rgn = memregion("maincpu");
-	if (rgn) {
-		uint8_t *rom = rgn->base();
-		// CALL 0x1CF6 at 0x1AD8 (CD F6 1C)
-		if (rom[0x1AD8] == 0xCD && rom[0x1AD9] == 0xF6 && rom[0x1ADA] == 0x1C) {
-			rom[0x1AD8] = 0x00; rom[0x1AD9] = 0x00; rom[0x1ADA] = 0x00;
-		}
-		// CALL 0x1CF0 at 0x1AEB (CD F0 1C)
-		if (rom[0x1AEB] == 0xCD && rom[0x1AEC] == 0xF0 && rom[0x1AED] == 0x1C) {
-			rom[0x1AEB] = 0x00; rom[0x1AEC] = 0x00; rom[0x1AED] = 0x00;
-		}
-	}
-
 	machine().add_notifier(MACHINE_NOTIFY_EXIT, machine_notify_delegate(&hp4951b_state::dump_vram, this));
 
 	save_item(NAME(m_icr));
