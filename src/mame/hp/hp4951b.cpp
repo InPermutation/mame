@@ -365,10 +365,6 @@ uint8_t hp4951b_state::io_r_impl(offs_t offset)
 void hp4951b_state::io_w(offs_t offset, uint8_t data)
 {
 	logerror("io_w 0x%02X = 0x%02X\n", offset & 0xff, data);
-	// Keyboard matrix latch: U302 output 3 (A15=0,A14=0,A13=1,A12=1,A11=1).
-	// Captures D0-D7 on any I/O write in 0x3800-0x3FFF.
-	if ((offset & 0xf800) == 0x3800)
-		m_kbd_matrix_latch = data;
 	// 8-bit ports (decode A7-A0 only)
 	switch (offset & 0xff)
 	{
@@ -411,6 +407,12 @@ uint8_t hp4951b_state::win_r(offs_t offset)
 void hp4951b_state::win_w(offs_t offset, uint8_t data)
 {
 	m_winram[offset] = data;
+	// Keyboard matrix latch (U401/KEY BD LATCH): captures D0-D7 as a
+	// side effect of writes to 0x3800-0x3FFF (offset 0x1800-0x1FFF here).
+	// The write goes to BOTH the window RAM and the latch (overlapping).
+	if (offset >= 0x1800) {
+		m_kbd_matrix_latch = data;
+	}
 }
 
 uint8_t hp4951b_state::bank_r(offs_t offset)
