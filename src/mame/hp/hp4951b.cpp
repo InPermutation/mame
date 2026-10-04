@@ -142,6 +142,14 @@ private:
 	// old hack; the staging was removed). Stub for now.
 	uint8_t kbd_data_r() { return 0x00; }
 	void kbd_data_w(uint8_t data) { /* ignore */ }
+	// RIOT Port B (0x4E): keyboard matrix sense inputs.
+	// The firmware drives a row via the 0x3800 latch, then reads PB to get
+	// the column states. For now, return 0xFF (no keys, pull-ups high).
+	// TODO: decode m_kbd_matrix_latch to determine active row, then return
+	// column mask based on MAME inputs.
+	uint8_t riot_pb_r() {
+		return 0xFF;  // no keys pressed
+	}
 	// Helper: check MAME inputs, return scancode (0xFF = no key).
 	// Host-to-emulator bridge: poll MAME input ports (KEY0-KEY8) and return
 	// the HP 4951A matrix position (row*8+col) for the currently pressed
@@ -286,6 +294,16 @@ uint8_t hp4951b_state::io_r(offs_t offset)
 		case 0x38: case 0x39: case 0x3a: case 0x3b:
 		case 0x3c: case 0x3d: case 0x3e: case 0x3f: return regs30_r(offset & 0xff);
 		case 0x40: return kbd_data_r();
+		case 0x4e: {
+			// DEBUG: RIOT Port B (keyboard matrix sense)
+			static int pb_count = 0;
+			uint8_t v = riot_pb_r();
+			if (pb_count < 20 || v != 0xFF) {
+				printf("RIOT_PB: firmware read 0x4E -> 0x%02X (latch=0x%02X, call #%d)\n",
+				       v, m_kbd_matrix_latch, ++pb_count);
+			}
+			return v;
+		}
 		case 0xc0: case 0xc1: case 0xc2: case 0xc3: return kbd_r(offset & 0xff);
 		case 0x50: case 0x51: case 0x52: case 0x53:
 		case 0x54: case 0x55: case 0x56: case 0x57:
