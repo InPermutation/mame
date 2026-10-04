@@ -70,14 +70,21 @@ private:
 	}
 	void port42_w(uint8_t data) {
 		// 810 Port C Data (0x42): direct write.
+		// PC1 (bit 1) falling edge (1→0) acks the RSTB latch.
+		uint8_t old = m_portc;
 		m_portc = data;
+		if ((old & 0x02) && !(data & 0x02)) {
+			m_maincpu->set_input_line(NSC800_RSTB, CLEAR_LINE);
+			m_kbd_irq_asserted = false;
+		}
 		portc_update();
 	}
 	void port4a_w(uint8_t data) {
 		// 810 Port C Bit-Clear (0x4A): write 1 to clear bit.
+		// PC1 (bit 1) falling edge acks the RSTB latch.
+		uint8_t old = m_portc;
 		m_portc &= ~data;
-		// PC1 (bit 1) acks the keyboard RSTB interrupt: clear the IRQ line.
-		if (data & 0x02) {
+		if ((old & 0x02) && !(m_portc & 0x02)) {
 			logerror("hp4951b: PC1 ACK (clear), pc=%04x\\n", m_maincpu->pc());
 			m_maincpu->set_input_line(NSC800_RSTB, CLEAR_LINE);
 			m_kbd_irq_asserted = false;
@@ -86,13 +93,9 @@ private:
 	}
 	void port4e_w(uint8_t data) {
 		// 810 Port C Bit-Set (0x4E): write 1 to set bit.
+		// Setting PC1 does NOT ack; only the 1→0 transition does.
 		m_portc |= data;
-		// PC1 set also acks (the 0x0056 routine toggles PC1).
-		if (data & 0x02) {
-			logerror("hp4951b: PC1 ACK (set), pc=%04x\\n", m_maincpu->pc());
-			m_maincpu->set_input_line(NSC800_RSTB, CLEAR_LINE);
-			m_kbd_irq_asserted = false;
-		}
+		portc_update();
 		portc_update();
 	}
 	void porta_update() {
