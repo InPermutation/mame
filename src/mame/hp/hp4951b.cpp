@@ -56,6 +56,7 @@ public:
 
 protected:
 	virtual void machine_start() override ATTR_COLD;
+	virtual void machine_reset() override ATTR_COLD;
 
 private:
 	void dump_vram();
@@ -437,8 +438,9 @@ TIMER_DEVICE_CALLBACK_MEMBER(hp4951b_state::softkey_tick)
 	if (soft & 0x40) rows++;  // R6
 	if (soft & 0x80) rows++;  // R7
 
-	// Trigger if any softkey row active (1KRO is per-key, not per-row).
-	if (rows >= 1 && !m_kbd_irq_asserted) {
+	// 1KRO: only latch if exactly one row active.
+	// ICR bit 1 (0xBB) gates RSTB; don't trigger if firmware hasn't enabled it.
+	if (rows >= 1 && !m_kbd_irq_asserted && (m_icr & 0x02)) {
 		m_kbd_irq_asserted = true;
 		m_maincpu->set_input_line(NSC800_RSTB, ASSERT_LINE);
 	}
@@ -630,6 +632,15 @@ void hp4951b_state::machine_start()
 	save_item(NAME(m_icr));
 	save_item(NAME(m_portc));
 	save_item(NAME(m_porta));
+}
+
+void hp4951b_state::machine_reset()
+{
+	// RIOT RESET (pin 4): clears the RSTB latch. Prevents boot-loop when
+	// a softkey is held through reset.
+	m_kbd_irq_asserted = false;
+	m_maincpu->set_input_line(NSC800_RSTB, CLEAR_LINE);
+	m_kbd_matrix_latch = 0x00;
 }
 
 
