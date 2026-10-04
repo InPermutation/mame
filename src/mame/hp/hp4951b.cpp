@@ -281,7 +281,7 @@ uint8_t hp4951b_state::io_r_impl(offs_t offset)
 		case 0x34: case 0x35: case 0x36: case 0x37:
 		case 0x39: case 0x3a: case 0x3b:
 		case 0x3c: case 0x3d: case 0x3e: case 0x3f: return regs30_r(offset & 0xff);
-		case 0x18: return m_kbd_matrix_latch;  // KEY BD LATCH (U401, U302 Y3)
+		// 0x18: KEY BD LATCH (U401) is write-only; no read case (open bus)
 		case 0x41: {
 			// DEBUG: RIOT Port B (keyboard matrix sense)
 			// Per NSC810 Table I: Port B Data = xxx00001
