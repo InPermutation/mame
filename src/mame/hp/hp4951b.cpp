@@ -408,32 +408,14 @@ void hp4951b_state::pager_w(uint8_t data)
 	// trampoline, no LDIR). We emulate with win_r/win_w handlers.
 	// Calls from fixed ROM during POST are hardware init, not cross-bank calls —
 	// don't switch the window there (PC gate).
-	uint16_t pc = m_maincpu->pc();
-	bool from_banked = (pc >= 0x8000);
-	switch (data)
+	// U207 (Fig 8-21): PA0 (bit 0) + PA4 (bit 4) select the 0x8000 bank.
+	// Mask out PA1/PA2/PA6/PA7 which are for U206 (0x2000) and other functions.
+	switch (data & 0x11)
 	{
-	case 0x00: m_bankstate = 0; break; // RAM (confirmed)
-	case 0x01: m_bankstate = 1; m_last_rom_bank = 1; break; // 10023 UI shell
-	case 0x10: m_bankstate = 2; m_last_rom_bank = 2; break; // 10024 engine
-	case 0x11: m_bankstate = 3; m_last_rom_bank = 3; break; // 10022 remote/pod
-	case 0x04:
-		// 10024 JP table at 0x2000 window (only from banked code)
-		// PA6 now controls 0x2000 window (U206), not m_winstate
-		break;
-	case 0x06:
-		// 10023 JP table at 0x2000 window (only from banked code)
-		// PA6 now controls 0x2000 window (U206), not m_winstate
-		break;
-	case 0x20:
-		// Window = RAM (m_winstate=0). 0x20 is a window value, not a bank
-		// value — followed by 0x2000 accesses in firmware.
-		break;
-	case 0x40:
-		// Type-2 window for JP index 0x20 (L=0x20 → SLA → 0x40).
-		// Overlays current bank's JP table at 0x2000 (like 0x04/0x06).
-		if (from_banked)
-			m_winstate = (m_bankstate == 1) ? 1 : 2;
-		break;
+	case 0x00: m_bankstate = 0; break; // RAM (U201-U204)
+	case 0x01: m_bankstate = 1; m_last_rom_bank = 1; break; // 10023 (U200)
+	case 0x10: m_bankstate = 2; m_last_rom_bank = 2; break; // 10024 (U205)
+	case 0x11: m_bankstate = 3; break; // U100 RAM (option slot)
 	default:
 		break;
 	}
