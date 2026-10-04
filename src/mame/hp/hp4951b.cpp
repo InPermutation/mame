@@ -138,59 +138,10 @@ private:
 	}
 	uint8_t m_kbd_latch = 0x00;  // 74HC373 scancode latch (port 0xC3)
 	uint8_t m_kbd_matrix_latch = 0x00;  // 74HC373 matrix drive latch (U302 output 3, 0x3800-0x3FFF, write-only side effect)
-	// Port 0x40: keyboard data port for handler 2 (RE 2026-09-28).
-	// Hardware stages ASCII here; firmware reads it via IN A,(0x40),
-	// then writes the ID back as acknowledge via OUT (0x40),A.
-	uint8_t kbd_data_r() { return m_staged_ascii; }
-	void kbd_data_w(uint8_t data) { /* ack: ID written back, ignore */ }
-	// Helper: apply Shift/Ctrl modifiers to a base ASCII code.
-	// Ctrl+key generates the control code per the keycap labels
-	// (Q=DC1, [=ESC, ]=GS, \=FS, @=NUL, etc.)
-	uint8_t apply_mods(uint8_t base) {
-		uint8_t key8 = ioport("KEY8")->read();
-		bool shift = (key8 & 0x08) != 0;
-		bool ctrl = (key8 & 0x10) != 0;
-		if (ctrl) {
-			if (base >= 'a' && base <= 'z') return base & 0x1F;
-			if (base >= 'A' && base <= 'Z') return base & 0x1F;
-			switch (base) {
-				case '[': return 0x1B;  // ESC
-				case ']': return 0x1D;  // GS
-				case '\\': return 0x1C; // FS
-				case '@': return 0x00;  // NUL
-				case '^': return 0x1E;  // RS
-				case '_': return 0x1F;  // US
-				default: return base;
-			}
-		}
-		if (shift) {
-			if (base >= 'a' && base <= 'z') return base - 32;
-			switch (base) {
-				case '1': return '!';
-				case '2': return '"';
-				case '3': return '#';
-				case '4': return '$';
-				case '5': return '%';
-				case '6': return '&';
-				case '7': return '\'';
-				case '8': return '(';
-				case '9': return ')';
-				case '0': return '_';
-				case '-': return '=';
-				case '^': return '~';
-				case ';': return '+';
-				case ':': return '*';
-				case ',': return '<';
-				case '.': return '>';
-				case '/': return '?';
-				case '[': return '{';
-				case ']': return '}';
-				case '\\': return '|';
-				default: return base;
-			}
-		}
-		return base;
-	}
+	// Port 0x40: unknown hardware function (was used for ASCII staging in the
+	// old hack; the staging was removed). Stub for now.
+	uint8_t kbd_data_r() { return 0x00; }
+	void kbd_data_w(uint8_t data) { /* ignore */ }
 	// Helper: check MAME inputs, return scancode (0xFF = no key).
 	// Host-to-emulator bridge: poll MAME input ports (KEY0-KEY8) and return
 	// the HP 4951A matrix position (row*8+col) for the currently pressed
@@ -298,7 +249,6 @@ private:
 	uint8_t m_regs50[16] = { 0 };
 	uint8_t m_scc_b_data = 0;
 	uint8_t m_scc_a_data = 0;
-	uint8_t m_staged_ascii = 0x00;  // ASCII staged on port 0x40 for handler 2
 };
 
 
