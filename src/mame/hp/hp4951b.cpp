@@ -110,7 +110,15 @@ private:
 	// currently pressed host key, or 0xFF if none.
 	uint8_t kbd_r(offs_t offset) {
 		switch (offset & 3) {
-			case 3: return get_host_key_matrix_position();
+			case 3: {
+				uint8_t sc = get_host_key_matrix_position();
+				// DEBUG: trace 0xC3 reads
+				static int count = 0;
+				if (count < 20 || sc != 0xFF) {
+					printf("KBD_R: firmware read 0xC3 -> 0x%02X (call #%d)\n", sc, ++count);
+				}
+				return sc;
+			}
 			default: return 0x00;
 		}
 	}
