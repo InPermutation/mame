@@ -200,6 +200,7 @@ private:
 	}
 	uint8_t m_kbd_matrix_latch = 0xFF;  // 74HC373 matrix drive latch (U302 output 3, 0x3800-0x3FFF, write-only side effect)
 	bool m_kbd_irq_asserted = false;  // RSTB latch (set by SOFTKEY DECODER, cleared by PC1)
+	uint8_t m_softkey_prev = 0x00;  // Prev softkey rows (prevent re-trigger on hold; ISR does EI before Port B read)
 	// RIOT Port B (0x41): keyboard matrix sense inputs.
 	// Returns 0x00 always for now (ISR handles gracefully).
 	// TODO: implement actual column mask from m_kbd_matrix_latch + MAME inputs.
@@ -429,14 +430,11 @@ TIMER_DEVICE_CALLBACK_MEMBER(hp4951b_state::softkey_tick)
 	if (ioport("KEY6")->read()) soft |= 0x40;  // R6
 	if (ioport("KEY7")->read()) soft |= 0x80;  // R7
 
-	int rows = 0;
-	if (soft & 0x02) rows++;  // R1
-	if (soft & 0x20) rows++;  // R5
-	if (soft & 0x40) rows++;  // R6
-	if (soft & 0x80) rows++;  // R7
-
-	// 1KRO: only latch if exactly one row active.
-	if (rows >= 1 && !m_kbd_irq_asserted) {
+	// Don't re-trigger while key held: ISR does EI at 0x0F30 before IN A,(41H),
+	// so a held key would nest interrupts → stack overflow. Require release.
+	uint8_t rising = soft & ~m_softkey_prev;
+	m_softkey_prev = soft;
+	if (rising && !m_kbd_irq_asserted) {
 		m_kbd_irq_asserted = true;
 		logerror("hp4951b: RSTB ASSERT (softkey), pc=%04x\n", m_maincpu->pc());
 		m_maincpu->set_input_line(NSC800_RSTB, ASSERT_LINE);
