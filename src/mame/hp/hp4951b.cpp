@@ -50,6 +50,8 @@ private:
 	void dump_vram();
 	void mem_map(address_map &map);
 	void io_map(address_map &map);
+	uint8_t io_r(offs_t offset);
+	void io_w(offs_t offset, uint8_t data);
 
 	void pager_w(uint8_t data);
 	uint8_t win_r(offs_t offset);
@@ -147,6 +149,7 @@ private:
 		}
 	}
 	uint8_t m_kbd_latch = 0x00;  // 74HC373 scancode latch (port 0xC3)
+	uint8_t m_kbd_matrix_latch = 0x00;  // 74HC373 matrix drive latch (U302 output 3, 0x3800-0x3FFF)
 	bool m_kbd_irq = false;     // 74HC74 IRQ flip-flop (cleared by OUT 0xC1=0x38)
 	// IRQ acknowledge: the keyboard vector byte is hardwired to 0x4C.
 	// (IM 2: CPU forms handler address from I (0x79) + vector byte.)
@@ -366,21 +369,60 @@ void hp4951b_state::mem_map(address_map &map)
 
 void hp4951b_state::io_map(address_map &map)
 {
-	map.global_mask(0xff);
-	map(0x08, 0x08).w(m_crtc, FUNC(mc6845_device::address_w));
-	map(0x09, 0x09).w(m_crtc, FUNC(mc6845_device::register_w));
-	map(0x0b, 0x0b).r(m_crtc, FUNC(mc6845_device::register_r));
-	// Z8530 SCC (DLC): 0x30=B ctrl, 0x31=A ctrl, 0x32=B data, 0x33=A data
-	// Minimal stub: control reads return healthy status, data ports loop back.
-	map(0x30, 0x33).rw(FUNC(hp4951b_state::scc_r), FUNC(hp4951b_state::scc_w));
-	map(0x34, 0x3f).rw(FUNC(hp4951b_state::regs30_r), FUNC(hp4951b_state::regs30_w));
-	map(0x40, 0x40).rw(FUNC(hp4951b_state::kbd_data_r), FUNC(hp4951b_state::kbd_data_w));
-	map(0x47, 0x47).w(FUNC(hp4951b_state::port47_w));
-	map(0x48, 0x48).w(FUNC(hp4951b_state::port48_w));
-	map(0xc0, 0xc3).rw(FUNC(hp4951b_state::kbd_r), FUNC(hp4951b_state::kbd_w));
-	map(0x4c, 0x4c).w(FUNC(hp4951b_state::pager_w));
-	map(0x50, 0x5f).rw(FUNC(hp4951b_state::regs50_r), FUNC(hp4951b_state::regs50_w));
-	map(0xbb, 0xbb).w(FUNC(hp4951b_state::icr_w));
+	// 16-bit I/O with hardware-accurate decode.
+	// U302 output 3 (keyboard matrix latch) captures D0-D7 on ANY I/O write
+	// where A15=0,A14=0,A13=1,A12=1,A11=1 (0x3800-0x3FFF), even if an 8-bit
+	// port also decodes the low byte. The hardware bus "conflict" is harmless:
+	// the firmware always writes the latch deliberately before scanning.
+	// 8-bit ports decode A7-A0 only.
+	map(0x0000, 0xffff).rw(FUNC(hp4951b_state::io_r), FUNC(hp4951b_state::io_w));
+}
+
+uint8_t hp4951b_state::io_r(offs_t offset)
+{
+	switch (offset & 0xff)
+	{
+		case 0x0b: return m_crtc->register_r();
+		case 0x30: case 0x31: case 0x32: case 0x33: return scc_r(offset & 0xff);
+		case 0x34: case 0x35: case 0x36: case 0x37:
+		case 0x38: case 0x39: case 0x3a: case 0x3b:
+		case 0x3c: case 0x3d: case 0x3e: case 0x3f: return regs30_r(offset & 0xff);
+		case 0x40: return kbd_data_r();
+		case 0xc0: case 0xc1: case 0xc2: case 0xc3: return kbd_r(offset & 0xff);
+		case 0x50: case 0x51: case 0x52: case 0x53:
+		case 0x54: case 0x55: case 0x56: case 0x57:
+		case 0x58: case 0x59: case 0x5a: case 0x5b:
+		case 0x5c: case 0x5d: case 0x5e: case 0x5f: return regs50_r(offset & 0xff);
+		default: return 0xff;
+	}
+}
+
+void hp4951b_state::io_w(offs_t offset, uint8_t data)
+{
+	// Keyboard matrix latch: U302 output 3 (A15=0,A14=0,A13=1,A12=1,A11=1).
+	// Captures D0-D7 on any I/O write in 0x3800-0x3FFF.
+	if ((offset & 0xf800) == 0x3800)
+		m_kbd_matrix_latch = data;
+	// 8-bit ports (decode A7-A0 only)
+	switch (offset & 0xff)
+	{
+		case 0x08: m_crtc->address_w(data); break;
+		case 0x09: m_crtc->register_w(data); break;
+		case 0x30: case 0x31: case 0x32: case 0x33: scc_w(offset & 0xff, data); break;
+		case 0x34: case 0x35: case 0x36: case 0x37:
+		case 0x38: case 0x39: case 0x3a: case 0x3b:
+		case 0x3c: case 0x3d: case 0x3e: case 0x3f: regs30_w(offset & 0xff, data); break;
+		case 0x40: kbd_data_w(data); break;
+		case 0x47: port47_w(data); break;
+		case 0x48: port48_w(data); break;
+		case 0xc0: case 0xc1: case 0xc2: case 0xc3: kbd_w(offset & 0xff, data); break;
+		case 0x4c: pager_w(data); break;
+		case 0x50: case 0x51: case 0x52: case 0x53:
+		case 0x54: case 0x55: case 0x56: case 0x57:
+		case 0x58: case 0x59: case 0x5a: case 0x5b:
+		case 0x5c: case 0x5d: case 0x5e: case 0x5f: regs50_w(offset & 0xff, data); break;
+		case 0xbb: icr_w(data); break;
+	}
 }
 
 
