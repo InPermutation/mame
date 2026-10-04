@@ -338,16 +338,21 @@ void hp4951b_state::io_w(offs_t offset, uint8_t data)
 // never in ROM. This models the PAL mapping, not a memcpy.
 uint8_t hp4951b_state::win_r(offs_t offset)
 {
-	int entry = m_winstate;
-	if (entry == 1)
-		return memregion("rom23")->base()[offset];
-	if (entry == 2)
-		return memregion("rom24")->base()[offset];
-	return m_winram[offset];
+	// U206 (Fig 8-21): PA6 selects M2A (ROM 2/U103) vs M2B (RAM 2/U104).
+	// PA6=0 → ROM 2 visible; PA1/PA2 select 1 of 4 8KB pages (32KB total).
+	// PA6=1 → RAM 2 (U104) visible.
+	if (m_porta & 0x40) {
+		return m_winram[offset];
+	} else {
+		int page = (m_porta >> 1) & 0x03;  // PA1=bit1, PA2=bit2
+		uint32_t rom_offset = (page << 13) | (offset & 0x1fff);
+		return memregion("rom24")->base()[rom_offset];
+	}
 }
 
 void hp4951b_state::win_w(offs_t offset, uint8_t data)
 {
+	// Writes go to RAM 2 (U104) underneath; ROM 2 (U103) is read-only.
 	m_winram[offset] = data;
 }
 
@@ -409,22 +414,21 @@ void hp4951b_state::pager_w(uint8_t data)
 	bool from_banked = (pc >= 0x8000);
 	switch (data)
 	{
-	case 0x00: m_bankstate = 0; m_winstate = 0; break; // RAM (confirmed)
-	case 0x01: m_bankstate = 1; m_last_rom_bank = 1; m_winstate = 0; break; // 10023 UI shell
-	case 0x10: m_bankstate = 2; m_last_rom_bank = 2; m_winstate = 0; break; // 10024 engine
-	case 0x11: m_bankstate = 3; m_last_rom_bank = 3; m_winstate = 0; break; // 10022 remote/pod
+	case 0x00: m_bankstate = 0; break; // RAM (confirmed)
+	case 0x01: m_bankstate = 1; m_last_rom_bank = 1; break; // 10023 UI shell
+	case 0x10: m_bankstate = 2; m_last_rom_bank = 2; break; // 10024 engine
+	case 0x11: m_bankstate = 3; m_last_rom_bank = 3; break; // 10022 remote/pod
 	case 0x04:
 		// 10024 JP table at 0x2000 window (only from banked code)
-		if (from_banked) m_winstate = 2;
+		// PA6 now controls 0x2000 window (U206), not m_winstate
 		break;
 	case 0x06:
 		// 10023 JP table at 0x2000 window (only from banked code)
-		if (from_banked) m_winstate = 1;
+		// PA6 now controls 0x2000 window (U206), not m_winstate
 		break;
 	case 0x20:
 		// Window = RAM (m_winstate=0). 0x20 is a window value, not a bank
 		// value — followed by 0x2000 accesses in firmware.
-		m_winstate = 0;
 		break;
 	case 0x40:
 		// Type-2 window for JP index 0x20 (L=0x20 → SLA → 0x40).
