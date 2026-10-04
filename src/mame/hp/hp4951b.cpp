@@ -426,8 +426,8 @@ TIMER_DEVICE_CALLBACK_MEMBER(hp4951b_state::softkey_tick)
 	if (soft & 0x40) rows++;  // R6
 	if (soft & 0x80) rows++;  // R7
 
-	// 1KRO: only latch if exactly one row active.
-	if (rows == 1 && !m_kbd_irq_asserted) {
+	// Trigger if any softkey row active (1KRO is per-key, not per-row).
+	if (rows >= 1 && !m_kbd_irq_asserted) {
 		m_kbd_irq_asserted = true;
 		m_maincpu->set_input_line(NSC800_RSTB, ASSERT_LINE);
 	}
