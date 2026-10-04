@@ -293,9 +293,13 @@ private:
 		// writes to mailbox 0x7B58/0x7B56, acks via OUT (0xC1)=0x38.
 		// No direct mailbox writes; no IRQ.
 		kbd_w(3, sc);
-		// Port 0x40 handshake: stage the ASCII for the firmware's
-		// character handler (bank-1 routine loads via LD BC,(0x7D65)).
-		// TODO: remove once the 0xC3 path is verified for printables.
+		// Menu interface (diagnostics): 0x7D64 (flag) / 0x7D65 (ID).
+		// The menu polls these directly; 0xC3 is for the keyboard path.
+		// Restore the menu writes (were removed; menu went dead).
+		// TODO: determine if menu should also use 0xC3, or if this is correct.
+		m_mainram[0x3D64] = 0x01;
+		m_mainram[0x3D65] = sc;
+		// Port 0x40 handshake: stage the scancode for the firmware.
 		if (sc > 0x0B) {
 			m_staged_ascii = sc;
 		}
