@@ -115,7 +115,7 @@ private:
 				// DEBUG: trace 0xC3 reads
 				static int count = 0;
 				if (count < 20 || sc != 0xFF) {
-					printf("KBD_R: firmware read 0xC3 -> 0x%02X (call #%d)\n", sc, ++count);
+					logerror("KBD_R: firmware read 0xC3 -> 0x%02X (call #%d)\n", sc, ++count);
 				}
 				return sc;
 			}
@@ -299,7 +299,7 @@ uint8_t hp4951b_state::io_r(offs_t offset)
 			static int pb_count = 0;
 			uint8_t v = riot_pb_r();
 			if (pb_count < 20 || v != 0xFF) {
-				printf("RIOT_PB: firmware read 0x4E -> 0x%02X (latch=0x%02X, call #%d)\n",
+				logerror("RIOT_PB: firmware read 0x4E -> 0x%02X (latch=0x%02X, call #%d)\n",
 				       v, m_kbd_matrix_latch, ++pb_count);
 			}
 			return v;
