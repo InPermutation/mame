@@ -54,6 +54,8 @@ private:
 	uint8_t io_r_impl(offs_t offset);
 	void io_w(offs_t offset, uint8_t data);
 
+	TIMER_DEVICE_CALLBACK_MEMBER(kbd_irq_poll);
+
 	void pager_w(uint8_t data);
 	uint8_t win_r(offs_t offset);
 	void win_w(offs_t offset, uint8_t data);
@@ -279,6 +281,19 @@ void hp4951b_state::mem_map(address_map &map)
 	map(0x2000, 0x3fff).rw(FUNC(hp4951b_state::win_r), FUNC(hp4951b_state::win_w));
 	map(0x4000, 0x7fff).ram().share("mainram");
 	map(0x8000, 0xffff).rw(FUNC(hp4951b_state::bank_r), FUNC(hp4951b_state::bank_w));
+}
+
+// Keyboard IRQ poll: models the discrete NAND/flip-flop chain that
+// asserts NSC800 RSTB when a key is pressed. Checks MAME inputs and
+// drives the RSTB line accordingly (not a scanner timer).
+TIMER_DEVICE_CALLBACK_MEMBER(hp4951b_state::kbd_irq_poll)
+{
+	uint8_t sc = get_host_key_matrix_position();
+	if (sc != 0xFF) {
+		m_maincpu->set_input_line(NSC800_RSTB, ASSERT_LINE);
+	} else {
+		m_maincpu->set_input_line(NSC800_RSTB, CLEAR_LINE);
+	}
 }
 
 
@@ -735,6 +750,10 @@ void hp4951b_state::hp4951b(machine_config &config)
 	m_crtc->set_show_border_area(false);
 	m_crtc->set_char_width(8);
 	m_crtc->set_update_row_callback(FUNC(hp4951b_state::crtc_update_row));
+
+	// Keyboard IRQ: discrete logic asserts RSTB on key press.
+	// Poll MAME inputs at 60Hz to drive the RSTB line.
+	TIMER(config, "kbd_irq").configure_periodic(FUNC(hp4951b_state::kbd_irq_poll), attotime::from_hz(60));
 }
 
 
