@@ -79,6 +79,7 @@ private:
 		if (data & 0x02) {
 			logerror("hp4951b: PC1 ACK (clear), pc=%04x\\n", m_maincpu->pc());
 			m_maincpu->set_input_line(NSC800_RSTB, CLEAR_LINE);
+			m_kbd_irq_asserted = false;
 		}
 		portc_update();
 	}
@@ -89,6 +90,7 @@ private:
 		if (data & 0x02) {
 			logerror("hp4951b: PC1 ACK (set), pc=%04x\\n", m_maincpu->pc());
 			m_maincpu->set_input_line(NSC800_RSTB, CLEAR_LINE);
+			m_kbd_irq_asserted = false;
 		}
 		portc_update();
 	}
@@ -163,6 +165,7 @@ private:
 		}
 	}
 	uint8_t m_kbd_matrix_latch = 0x00;  // 74HC373 matrix drive latch (U302 output 3, 0x3800-0x3FFF, write-only side effect)
+	bool m_kbd_irq_asserted = false;  // RSTB edge-trigger state
 	// RIOT Port B (0x41): keyboard matrix sense inputs.
 	// Returns 0x00 always for now (ISR handles gracefully).
 	// TODO: implement actual column mask from m_kbd_matrix_latch + MAME inputs.
@@ -280,15 +283,22 @@ private:
 
 // Keyboard IRQ poll: models the discrete NAND/flip-flop chain that
 // asserts NSC800 RSTB when a key is pressed.
+// Edge-triggered: assert once on key-down, not every poll while held.
+// (The hardware flip-flop stays set until PC1 ack; it doesn't re-clock
+// while the key is held.)
 TIMER_DEVICE_CALLBACK_MEMBER(hp4951b_state::kbd_irq_poll)
 {
 	uint8_t sc = get_host_key_matrix_position();
-	if (sc != 0xFF) {
+	bool key_down = (sc != 0xFF);
+	if (key_down && !m_kbd_irq_asserted) {
 		logerror("hp4951b: RSTB ASSERT (key sc=%02x, pc=%04x)\\n", sc, m_maincpu->pc());
 		m_maincpu->set_input_line(NSC800_RSTB, ASSERT_LINE);
-	} else {
+		m_kbd_irq_asserted = true;
+	} else if (!key_down) {
 		m_maincpu->set_input_line(NSC800_RSTB, CLEAR_LINE);
+		m_kbd_irq_asserted = false;
 	}
+	// If key is held and IRQ already asserted, do nothing (wait for PC1 ack).
 }
 
 
