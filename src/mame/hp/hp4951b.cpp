@@ -271,13 +271,6 @@ private:
 		if (key8 & 0x04) return 0x10;     // DEL (2,0)
 		return 0xFF;  // no key pressed
 	}
-	// Firmware mailbox interface: poll MAME inputs and post key events to the
-	// firmware's (0x7D64)/(0x7D65) mailbox — the API that the menu (0x02E2),
-	// KBD TEST, and app code poll. The firmware translator from the RAW
-	// hardware mailbox (0x7B56)/(0x7B58) to this mailbox has not been located
-	// in ROM, so the driver implements the firmware-to-application contract
-	// directly. This is the firmware API, not a hack.
-	// CPU 0x7D64 = m_mainram[0x3D64], CPU 0x7D65 = m_mainram[0x3D65].
 	uint8_t regs50_r(offs_t offset) { return m_regs50[offset & 0xf]; }
 	void regs50_w(offs_t offset, uint8_t data) { m_regs50[offset & 0xf] = data; }
 
