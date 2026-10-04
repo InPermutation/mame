@@ -198,7 +198,7 @@ private:
 			break;
 		}
 	}
-	uint8_t m_kbd_matrix_latch = 0x00;  // 74HC373 matrix drive latch (U302 output 3, 0x3800-0x3FFF, write-only side effect)
+	uint8_t m_kbd_matrix_latch = 0xFF;  // 74HC373 matrix drive latch (U302 output 3, 0x3800-0x3FFF, write-only side effect)
 	bool m_kbd_irq_asserted = false;  // RSTB latch (set by SOFTKEY DECODER, cleared by PC1)
 	// RIOT Port B (0x41): keyboard matrix sense inputs.
 	// Returns 0x00 always for now (ISR handles gracefully).
@@ -627,7 +627,7 @@ void hp4951b_state::machine_reset()
 	// a softkey is held through reset.
 	m_kbd_irq_asserted = false;
 	m_maincpu->set_input_line(NSC800_RSTB, CLEAR_LINE);
-	m_kbd_matrix_latch = 0x00;
+	m_kbd_matrix_latch = 0xFF;
 }
 
 
