@@ -60,7 +60,7 @@ private:
 	void win_w(offs_t offset, uint8_t data);
 	uint8_t bank_r(offs_t offset);
 	void bank_w(offs_t offset, uint8_t data);
-	uint8_t m_portc = 0x00;  // 810 Port C output latch (PC3 = buzzer, PC6 = ?)
+	uint8_t m_portc = 0x00;  // 810 Port C output latch (PC3 = buzzer)
 	uint8_t m_porta = 0x00;  // 810 Port A output latch (PA0/PA4 = 0x8000 bank, PA1/PA2 = 0x2000 window)
 	void portc_update() {
 		logerror("hp4951b: BUZZER %s (PC=%04x, cycles=%llu)\n",
