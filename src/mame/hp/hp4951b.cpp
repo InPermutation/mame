@@ -151,7 +151,7 @@ private:
 		}
 	}
 	uint8_t m_kbd_matrix_latch = 0x00;  // 74HC373 matrix drive latch (U302 output 3, 0x3800-0x3FFF, write-only side effect)
-	// RIOT Port B (0x40): keyboard matrix sense inputs.
+	// RIOT Port B (0x41): keyboard matrix sense inputs.
 	// The firmware drives a row via the 0x3800 latch, then reads PB to get
 	// the column states. For now, return 0xFF (no keys, pull-ups high).
 	// TODO: decode m_kbd_matrix_latch to determine active row, then return
