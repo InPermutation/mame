@@ -139,8 +139,8 @@ private:
 			// (NSC800 ICR gating and IFF timing make IRQ delivery unreliable
 			// in this CPU model). The hardware latch/IRQ state is still
 			// maintained accurately for any firmware that polls it.
-			m_mainram[0x5A56] = 0x01;  // key-available flag (CPU 0x7B56)
-			m_mainram[0x5A58] = data;  // scancode (CPU 0x7B58)
+			m_mainram[0x3B56] = 0x01;  // key-available flag (CPU 0x7B56)
+			m_mainram[0x3B58] = data;  // scancode (CPU 0x7B58)
 			break;
 		default:
 			break;
@@ -290,7 +290,7 @@ private:
 	// hardware mailbox (0x7B56)/(0x7B58) to this mailbox has not been located
 	// in ROM, so the driver implements the firmware-to-application contract
 	// directly. This is the firmware API, not a hack.
-	// CPU 0x7D64 = m_mainram[0x5C64], CPU 0x7D65 = m_mainram[0x5C65].
+	// CPU 0x7D64 = m_mainram[0x3D64], CPU 0x7D65 = m_mainram[0x3D65].
 	TIMER_DEVICE_CALLBACK_MEMBER(kbd_poll) {
 		uint8_t sc = get_scancode();
 		if (sc == 0xFF) {
@@ -306,15 +306,15 @@ private:
 		// RE 2026-09-28/29: IDs 0x00-0x0B are specials (write directly).
 		// Printable keys write the ASCII/control code directly to 0x7D65
 		// (>= 0x0C dispatches to the firmware character handler).
-		m_mainram[0x5C64] = 0x01;  // menu flag (CPU 0x7D64)
+		m_mainram[0x3D64] = 0x01;  // menu flag (CPU 0x7D64)
 		if (sc <= 0x0B) {
-			m_mainram[0x5C65] = sc;    // special: ID directly (CPU 0x7D65)
+			m_mainram[0x3D65] = sc;    // special: ID directly (CPU 0x7D65)
 		} else {
 			// RE 2026-09-29: printable keys write the ASCII/control code
 			// directly to 0x7D65 (not a generic 0x0C ID). The firmware's
 			// bank-1 character routine loads it via LD BC,(0x7D65).
 			// Port 0x40 is a handshake; stage the ASCII there too.
-			m_mainram[0x5C65] = sc;    // ASCII directly (CPU 0x7D65)
+			m_mainram[0x3D65] = sc;    // ASCII directly (CPU 0x7D65)
 			m_staged_ascii = sc;       // ASCII for port 0x40 handler
 		}
 	}
@@ -500,7 +500,7 @@ void hp4951b_state::icr_w(uint8_t data)
 MC6845_UPDATE_ROW(hp4951b_state::crtc_update_row)
 {
 	// ma already includes the R12/R13 start address (0x000 page 0, 0x200 page 1)
-	uint8_t *vram = &m_mainram[0x1F00];   // CPU 0x4000-0x47FF
+	uint8_t *vram = &m_mainram[0];   // CPU 0x4000-0x47FF (mainram base = 0x4000)
 	// Character ROM select via character code bit 7 (CD7 on EN1, HW-verified):
 	//   bit 7 clear: CHAR ROM 1 (10005)
 	//   bit 7 set:   CHAR ROM 2 (10006)
@@ -672,14 +672,14 @@ void hp4951b_state::dump_vram()
 	FILE *f = fopen("/tmp/hp4951b_vram.bin", "wb");
 	if (f != nullptr)
 	{
-		fwrite(&m_mainram[0x1F00], 1, 0x800, f);
+		fwrite(&m_mainram[0], 1, 0x800, f);
 		fclose(f);
 	}
 	// TEMP: dump RAM around the 0x3FBF stuck-PC for analysis
 	FILE *g = fopen("/tmp/hp4951b_ram3f.bin", "wb");
 	if (g != nullptr)
 	{
-		fwrite(&m_mainram[0x1E00], 1, 0x2200, g);  // CPU 0x3F00-0x6100
+		fwrite(&m_mainram[0], 1, 0x2200, g);  // CPU 0x4000-0x6200
 		fclose(g);
 	}
 }
