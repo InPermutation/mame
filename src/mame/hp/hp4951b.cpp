@@ -371,7 +371,6 @@ uint8_t hp4951b_state::bank_r(offs_t offset)
 			switch (m_last_rom_bank)
 			{
 			case 1: return memregion("rom23")->base()[offset];
-			case 3: return memregion("rom22")->base()[offset];
 			default: return memregion("rom24")->base()[offset]; // 2 = 10024
 			}
 		}
@@ -380,8 +379,7 @@ uint8_t hp4951b_state::bank_r(offs_t offset)
 	{
 	case 1: return memregion("rom23")->base()[offset];
 	case 2: return memregion("rom24")->base()[offset];
-	case 3: return memregion("rom22")->base()[offset];
-	default: return m_bankram[offset]; // 0 = RAM
+	default: return m_bankram[offset]; // 0 = RAM (U201-U204), 3 = U100 RAM (option slot)
 	}
 }
 
