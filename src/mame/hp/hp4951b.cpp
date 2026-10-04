@@ -53,7 +53,6 @@ private:
 	uint8_t io_r(offs_t offset);
 	uint8_t io_r_impl(offs_t offset);
 	void io_w(offs_t offset, uint8_t data);
-	TIMER_DEVICE_CALLBACK_MEMBER(kbd_irq_poll);
 
 
 	void pager_w(uint8_t data);
@@ -280,26 +279,6 @@ private:
 	uint8_t m_scc_b_data = 0;
 	uint8_t m_scc_a_data = 0;
 };
-
-// Keyboard IRQ poll: models the discrete NAND/flip-flop chain that
-// asserts NSC800 RSTB when a key is pressed.
-// Edge-triggered: assert once on key-down, not every poll while held.
-// (The hardware flip-flop stays set until PC1 ack; it doesn't re-clock
-// while the key is held.)
-TIMER_DEVICE_CALLBACK_MEMBER(hp4951b_state::kbd_irq_poll)
-{
-	uint8_t sc = get_host_key_matrix_position();
-	bool key_down = (sc != 0xFF);
-	if (key_down && !m_kbd_irq_asserted) {
-		logerror("hp4951b: RSTB ASSERT (key sc=%02x, pc=%04x)\\n", sc, m_maincpu->pc());
-		m_maincpu->set_input_line(NSC800_RSTB, ASSERT_LINE);
-		m_kbd_irq_asserted = true;
-	} else if (!key_down) {
-		m_maincpu->set_input_line(NSC800_RSTB, CLEAR_LINE);
-		m_kbd_irq_asserted = false;
-	}
-	// If key is held and IRQ already asserted, do nothing (wait for PC1 ack).
-}
 
 
 void hp4951b_state::mem_map(address_map &map)
@@ -770,9 +749,9 @@ void hp4951b_state::hp4951b(machine_config &config)
 	m_crtc->set_char_width(8);
 	m_crtc->set_update_row_callback(FUNC(hp4951b_state::crtc_update_row));
 
-	// Keyboard IRQ: discrete logic asserts RSTB on key press.
-	// Poll MAME inputs at 60Hz to drive the RSTB line.
-	TIMER(config, "kbd_irq").configure_periodic(FUNC(hp4951b_state::kbd_irq_poll), attotime::from_hz(60));
+	// Keyboard IRQ disabled: RSTB ISR destabilizes the firmware (POST restart).
+	// Focus on diagnostics failures first (RAM8-0, RAMA, etc.), then revisit.
+	// TIMER(config, "kbd_irq").configure_periodic(FUNC(hp4951b_state::kbd_irq_poll), attotime::from_hz(60));
 }
 
 
