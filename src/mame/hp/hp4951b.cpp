@@ -59,14 +59,26 @@ private:
 	void win_w(offs_t offset, uint8_t data);
 	uint8_t bank_r(offs_t offset);
 	void bank_w(offs_t offset, uint8_t data);
-	void port47_w(uint8_t data) {
-		// Piezo buzzer (port 0x47): 0x00 = off, 0x20 = beep.
-		// Logs POST progress: each beep = a passed test step.
-		// (B) I/O Timer, (C) Dual-port RAM & arbiter, (D) CRT controller.
-		// Cycle count included to debug BEEP-before-off ordering anomaly.
+	uint8_t m_portc = 0x00;  // 810 Port C output latch (PC3 = buzzer)
+	void portc_update() {
 		logerror("hp4951b: BUZZER %s (PC=%04x, cycles=%llu)\n",
-			data ? "BEEP" : "off", m_maincpu->pc(),
+			(m_portc & 0x08) ? "BEEP" : "off", m_maincpu->pc(),
 			(unsigned long long)m_maincpu->total_cycles());
+	}
+	void port42_w(uint8_t data) {
+		// 810 Port C Data (0x42): direct write.
+		m_portc = data;
+		portc_update();
+	}
+	void port4a_w(uint8_t data) {
+		// 810 Port C Bit-Clear (0x4A): write 1 to clear bit.
+		m_portc &= ~data;
+		portc_update();
+	}
+	void port4e_w(uint8_t data) {
+		// 810 Port C Bit-Set (0x4E): write 1 to set bit.
+		m_portc |= data;
+		portc_update();
 	}
 	void port48_w(uint8_t data) { m_port48 = data; }
 	void icr_w(uint8_t data);
@@ -334,8 +346,11 @@ void hp4951b_state::io_w(offs_t offset, uint8_t data)
 		case 0x38: case 0x39: case 0x3a: case 0x3b:
 		case 0x3c: case 0x3d: case 0x3e: case 0x3f: regs30_w(offset & 0xff, data); break;
 		case 0x40: break;  // RIOT PB data (input); writes ignored
-		case 0x47: port47_w(data); break;
+		case 0x42: port42_w(data); break;
+		case 0x47: break;  // 810 MDR (Mode Definition Reg); ignore for now
 		case 0x48: port48_w(data); break;
+		case 0x4a: port4a_w(data); break;
+		case 0x4e: port4e_w(data); break;
 		case 0xc0: case 0xc1: case 0xc2: case 0xc3: kbd_w(offset & 0xff, data); break;
 		case 0x4c: pager_w(data); break;
 		case 0x50: case 0x51: case 0x52: case 0x53:
@@ -604,6 +619,7 @@ void hp4951b_state::machine_start()
 	machine().add_notifier(MACHINE_NOTIFY_EXIT, machine_notify_delegate(&hp4951b_state::dump_vram, this));
 
 	save_item(NAME(m_icr));
+	save_item(NAME(m_portc));
 }
 
 
