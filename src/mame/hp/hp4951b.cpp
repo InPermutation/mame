@@ -340,8 +340,9 @@ uint8_t hp4951b_state::io_r_impl(offs_t offset)
 		case 0x0b: return m_crtc->register_r();
 		case 0x30: case 0x31: case 0x32: case 0x33: return scc_r(offset & 0xff);
 		case 0x34: case 0x35: case 0x36: case 0x37:
-		case 0x38: case 0x39: case 0x3a: case 0x3b:
+		case 0x39: case 0x3a: case 0x3b:
 		case 0x3c: case 0x3d: case 0x3e: case 0x3f: return regs30_r(offset & 0xff);
+		case 0x38: return m_kbd_matrix_latch;  // KEY BD LATCH (write-only HW, read for debug)
 		case 0x41: {
 			// DEBUG: RIOT Port B (keyboard matrix sense)
 			// Per NSC810 Table I: Port B Data = xxx00001
@@ -372,8 +373,9 @@ void hp4951b_state::io_w(offs_t offset, uint8_t data)
 		case 0x09: m_crtc->register_w(data); break;
 		case 0x30: case 0x31: case 0x32: case 0x33: scc_w(offset & 0xff, data); break;
 		case 0x34: case 0x35: case 0x36: case 0x37:
-		case 0x38: case 0x39: case 0x3a: case 0x3b:
+		case 0x39: case 0x3a: case 0x3b:
 		case 0x3c: case 0x3d: case 0x3e: case 0x3f: regs30_w(offset & 0xff, data); break;
+		case 0x38: m_kbd_matrix_latch = data; break;  // KEY BD LATCH (U401)
 		case 0x40: port40_w(data); break;  // 810 Port A Data
 		case 0x42: port42_w(data); break;
 		case 0x47: break;  // 810 MDR (Mode Definition Reg); ignore for now
@@ -407,12 +409,6 @@ uint8_t hp4951b_state::win_r(offs_t offset)
 void hp4951b_state::win_w(offs_t offset, uint8_t data)
 {
 	m_winram[offset] = data;
-	// Keyboard matrix latch (U401/KEY BD LATCH): captures D0-D7 as a
-	// side effect of writes to 0x3800-0x3FFF (offset 0x1800-0x1FFF here).
-	// The write goes to BOTH the window RAM and the latch (overlapping).
-	if (offset >= 0x1800) {
-		m_kbd_matrix_latch = data;
-	}
 }
 
 uint8_t hp4951b_state::bank_r(offs_t offset)
