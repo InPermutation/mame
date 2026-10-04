@@ -425,10 +425,12 @@ TIMER_DEVICE_CALLBACK_MEMBER(hp4951b_state::softkey_tick)
 	if (ioport("KEY7")->read()) soft |= 0x80;  // R7
 
 	// Only trigger on rising edge (new press, not hold).
+	// 1KRO: if multiple softkey rows are active, don't trigger (undefined HW).
 	uint8_t rising = soft & ~m_softkey_prev;
 	m_softkey_prev = soft;
 
-	if (rising) {
+	// Count bits in rising; 1KRO means exactly one new row.
+	if (rising && (rising & (rising - 1)) == 0) {
 		m_kbd_irq_asserted = true;
 		m_maincpu->set_input_line(NSC800_RSTB, ASSERT_LINE);
 	}
