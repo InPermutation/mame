@@ -130,7 +130,6 @@ private:
 		m_porta |= data;
 		porta_update();
 	}
-	void icr_w(uint8_t data);
 	uint8_t regs30_r(offs_t offset) { return m_regs30[offset & 0xf]; }
 	void regs30_w(offs_t offset, uint8_t data) { m_regs30[offset & 0xf] = data; }
 	// Z8530 SCC stub (DLC) at 0x30-0x33
@@ -259,7 +258,6 @@ private:
 
 	std::unique_ptr<uint8_t[]> m_bankram;
 	std::unique_ptr<uint8_t[]> m_winram;
-	uint8_t m_icr = 0;
 	uint8_t m_regs30[16] = { 0 };
 	uint8_t m_regs50[16] = { 0 };
 	uint8_t m_scc_b_data = 0;
@@ -355,7 +353,6 @@ void hp4951b_state::io_w(offs_t offset, uint8_t data)
 		case 0x54: case 0x55: case 0x56: case 0x57:
 		case 0x58: case 0x59: case 0x5a: case 0x5b:
 		case 0x5c: case 0x5d: case 0x5e: case 0x5f: regs50_w(offset & 0xff, data); break;
-		case 0xbb: icr_w(data); break;
 	}
 }
 
@@ -474,14 +471,6 @@ void hp4951b_state::pager_w(uint8_t data)
 	default:
 		break;
 	}
-}
-
-
-void hp4951b_state::icr_w(uint8_t data)
-{
-	m_icr = data;
-	// No interrupt sources are emulated yet, so the mask has nothing to gate.
-	// When sources exist: bit0=RSTA bit1=RSTB bit2=RSTC bit3=INTR.
 }
 
 
@@ -628,7 +617,6 @@ void hp4951b_state::machine_start()
 
 	machine().add_notifier(MACHINE_NOTIFY_EXIT, machine_notify_delegate(&hp4951b_state::dump_vram, this));
 
-	save_item(NAME(m_icr));
 	save_item(NAME(m_portc));
 	save_item(NAME(m_porta));
 }
