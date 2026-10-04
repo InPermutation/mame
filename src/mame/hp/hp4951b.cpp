@@ -429,8 +429,14 @@ TIMER_DEVICE_CALLBACK_MEMBER(hp4951b_state::softkey_tick)
 	uint8_t rising = soft & ~m_softkey_prev;
 	m_softkey_prev = soft;
 
-	// Count bits in rising; 1KRO means exactly one new row.
-	if (rising && (rising & (rising - 1)) == 0) {
+	// Count active rows in 'rising'; 1KRO hardware only handles one.
+	int rows = 0;
+	if (rising & 0x02) rows++;  // R1
+	if (rising & 0x20) rows++;  // R5
+	if (rising & 0x40) rows++;  // R6
+	if (rising & 0x80) rows++;  // R7
+
+	if (rows == 1) {
 		m_kbd_irq_asserted = true;
 		m_maincpu->set_input_line(NSC800_RSTB, ASSERT_LINE);
 	}
