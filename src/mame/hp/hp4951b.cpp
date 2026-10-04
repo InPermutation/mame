@@ -75,11 +75,20 @@ private:
 	void port4a_w(uint8_t data) {
 		// 810 Port C Bit-Clear (0x4A): write 1 to clear bit.
 		m_portc &= ~data;
+		// PC1 (bit 1) acks the keyboard RSTB interrupt: clear the IRQ line.
+		// (The kbd_irq_poll will re-assert if the key is still pressed.)
+		if (data & 0x02) {
+			m_maincpu->set_input_line(NSC800_RSTB, CLEAR_LINE);
+		}
 		portc_update();
 	}
 	void port4e_w(uint8_t data) {
 		// 810 Port C Bit-Set (0x4E): write 1 to set bit.
 		m_portc |= data;
+		// PC1 set also acks (the 0x0056 routine toggles PC1).
+		if (data & 0x02) {
+			m_maincpu->set_input_line(NSC800_RSTB, CLEAR_LINE);
+		}
 		portc_update();
 	}
 	void port48_w(uint8_t data) { m_port48 = data; }
