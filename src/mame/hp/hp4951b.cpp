@@ -199,75 +199,75 @@ private:
 	uint8_t get_scancode() {
 		uint8_t key0 = ioport("KEY0")->read();
 		uint8_t key1 = ioport("KEY1")->read();
-		if (key0 & 0x01) return 0x00;      // EXIT
-		if (key0 & 0x02) return 0x01;     // Softkey 1
-		if (key0 & 0x04) return 0x02;     // Softkey 2
-		if (key0 & 0x08) return 0x03;     // Softkey 3
-		if (key0 & 0x10) return 0x04;     // Softkey 4
-		if (key0 & 0x20) return 0x05;     // Softkey 5
-		if (key0 & 0x40) return 0x06;     // Softkey 6
-		if (key0 & 0x80) return 0x07;     // MORE
-		if (key1 & 0x01) return 0x08;     // Cursor Up
-		if (key1 & 0x02) return 0x09;     // Cursor Down
-		if (key1 & 0x04) return 0x0A;     // Cursor Left
-		if (key1 & 0x08) return 0x0B;     // Cursor Right
+		if (key0 & 0x01) return 0x00;      // EXIT (0,0)
+		if (key0 & 0x02) return 0x01;     // Softkey 1 (0,1)
+		if (key0 & 0x04) return 0x02;     // Softkey 2 (0,2)
+		if (key0 & 0x08) return 0x03;     // Softkey 3 (0,3)
+		if (key0 & 0x10) return 0x04;     // Softkey 4 (0,4)
+		if (key0 & 0x20) return 0x05;     // Softkey 5 (0,5)
+		if (key0 & 0x40) return 0x06;     // Softkey 6 (0,6)
+		if (key0 & 0x80) return 0x07;     // MORE (0,7)
+		if (key1 & 0x01) return 0x08;     // Cursor Up (1,0)
+		if (key1 & 0x02) return 0x09;     // Cursor Down (1,1)
+		if (key1 & 0x04) return 0x0A;     // Cursor Left (1,2)
+		if (key1 & 0x08) return 0x0B;     // Cursor Right (1,3)
 		uint8_t key2 = ioport("KEY2")->read();
-		if (key2 & 0x01) return apply_mods('1');
-		if (key2 & 0x02) return apply_mods('2');
-		if (key2 & 0x04) return apply_mods('3');
-		if (key2 & 0x08) return apply_mods('4');
-		if (key2 & 0x10) return apply_mods('5');
-		if (key2 & 0x20) return apply_mods('6');
-		if (key2 & 0x40) return apply_mods('7');
-		if (key2 & 0x80) return apply_mods('8');
+		if (key2 & 0x01) return 0x11;     // 1 ! (2,1)
+		if (key2 & 0x02) return 0x12;     // 2 " (2,2)
+		if (key2 & 0x04) return 0x13;     // 3 # (2,3)
+		if (key2 & 0x08) return 0x14;     // 4 $ (2,4)
+		if (key2 & 0x10) return 0x15;     // 5 % (2,5)
+		if (key2 & 0x20) return 0x16;     // 6 & (2,6)
+		if (key2 & 0x40) return 0x17;     // 7 ' (2,7)
+		if (key2 & 0x80) return 0x18;     // 8 ( (3,0)
 		uint8_t key3 = ioport("KEY3")->read();
-		if (key3 & 0x01) return apply_mods('9');
-		if (key3 & 0x02) return apply_mods('0');
-		if (key3 & 0x04) return apply_mods('-');
-		if (key3 & 0x08) return apply_mods('^');
-		if (key3 & 0x10) return apply_mods('@');
-		if (key3 & 0x20) return apply_mods(';');
-		if (key3 & 0x40) return apply_mods(':');
+		if (key3 & 0x01) return 0x19;     // 9 ) (3,1)
+		if (key3 & 0x02) return 0x10;     // 0 _ (2,0)
+		if (key3 & 0x04) return 0x1D;     // - = (3,5)
+		if (key3 & 0x08) return 0x3E;     // ^ ~ RS (7,6)
+		if (key3 & 0x10) return 0x20;     // @ NUL (4,0)
+		if (key3 & 0x20) return 0x1B;     // ; + (3,3)
+		if (key3 & 0x40) return 0x1A;     // : * (3,2)
 		uint8_t key4 = ioport("KEY4")->read();
-		if (key4 & 0x01) return apply_mods('q');
-		if (key4 & 0x02) return apply_mods('w');
-		if (key4 & 0x04) return apply_mods('e');
-		if (key4 & 0x08) return apply_mods('r');
-		if (key4 & 0x10) return apply_mods('t');
-		if (key4 & 0x20) return apply_mods('y');
-		if (key4 & 0x40) return apply_mods('u');
-		if (key4 & 0x80) return apply_mods('i');
+		if (key4 & 0x01) return 0x31;     // Q DC1 (6,1)
+		if (key4 & 0x02) return 0x37;     // W ETB (6,7)
+		if (key4 & 0x04) return 0x25;     // E ENQ (4,5)
+		if (key4 & 0x08) return 0x32;     // R DC2 (6,2)
+		if (key4 & 0x10) return 0x34;     // T DC4 (6,4)
+		if (key4 & 0x20) return 0x39;     // Y EM (7,1)
+		if (key4 & 0x40) return 0x35;     // U NAK (6,5)
+		if (key4 & 0x80) return 0x29;     // I HT (5,1)
 		uint8_t key5 = ioport("KEY5")->read();
-		if (key5 & 0x01) return apply_mods('o');
-		if (key5 & 0x02) return apply_mods('p');
-		if (key5 & 0x04) return 0x21;  // 'A' key: matrix row 4, col 1 (HW-verified)
-		if (key5 & 0x08) return apply_mods('s');
-		if (key5 & 0x10) return apply_mods('d');
-		if (key5 & 0x20) return apply_mods('f');
-		if (key5 & 0x40) return apply_mods('g');
-		if (key5 & 0x80) return apply_mods('h');
+		if (key5 & 0x01) return 0x2F;     // O SI (5,7)
+		if (key5 & 0x02) return 0x30;     // P DLE (6,0)
+		if (key5 & 0x04) return 0x21;     // A SOH (4,1)
+		if (key5 & 0x08) return 0x33;     // S DC3 (6,3)
+		if (key5 & 0x10) return 0x24;     // D EOT (4,4)
+		if (key5 & 0x20) return 0x26;     // F ACK (4,6)
+		if (key5 & 0x40) return 0x27;     // G BEL (4,7)
+		if (key5 & 0x80) return 0x28;     // H BS (5,0)
 		uint8_t key6 = ioport("KEY6")->read();
-		if (key6 & 0x01) return apply_mods('j');
-		if (key6 & 0x02) return apply_mods('k');
-		if (key6 & 0x04) return apply_mods('l');
-		if (key6 & 0x08) return apply_mods('z');
-		if (key6 & 0x10) return apply_mods('x');
-		if (key6 & 0x20) return apply_mods('c');
-		if (key6 & 0x40) return apply_mods('v');
-		if (key6 & 0x80) return apply_mods('b');
+		if (key6 & 0x01) return 0x2A;     // J LF (5,2)
+		if (key6 & 0x02) return 0x2B;     // K VT (5,3)
+		if (key6 & 0x04) return 0x2C;     // L FF (5,4)
+		if (key6 & 0x08) return 0x3A;     // Z SUB (7,2)
+		if (key6 & 0x10) return 0x38;     // X CAN (7,0)
+		if (key6 & 0x20) return 0x23;     // C ETX (4,3)
+		if (key6 & 0x40) return 0x36;     // V SYN (6,6)
+		if (key6 & 0x80) return 0x22;     // B STX (4,2)
 		uint8_t key7 = ioport("KEY7")->read();
-		if (key7 & 0x01) return apply_mods('n');
-		if (key7 & 0x02) return apply_mods('m');
-		if (key7 & 0x04) return apply_mods(',');
-		if (key7 & 0x08) return apply_mods('.');
-		if (key7 & 0x10) return apply_mods('/');
-		if (key7 & 0x20) return apply_mods(' ');
-		if (key7 & 0x40) return apply_mods('[');
-		if (key7 & 0x80) return apply_mods(']');
+		if (key7 & 0x01) return 0x2E;     // N SO (5,6)
+		if (key7 & 0x02) return 0x2D;     // M CR (5,5)
+		if (key7 & 0x04) return 0x1C;     // , < (3,4)
+		if (key7 & 0x08) return 0x1E;     // . > (3,6)
+		if (key7 & 0x10) return 0x1F;     // / ? US (3,7)
+		if (key7 & 0x20) return 0x0F;     // Space (1,7)
+		if (key7 & 0x40) return 0x3B;     // [ ESC (7,3)
+		if (key7 & 0x80) return 0x3D;     // ] GS (7,5)
 		uint8_t key8 = ioport("KEY8")->read();
-		if (key8 & 0x01) return apply_mods('\\');
-		if (key8 & 0x02) return 0x0B;      // RTN = Cursor Down (HW behavior)
-		if (key8 & 0x04) return 0x7F;      // DEL
+		if (key8 & 0x01) return 0x3C;     // \ FS (7,4)
+		if (key8 & 0x02) return 0x0C;     // RTN (1,4)
+		if (key8 & 0x04) return 0x10;     // DEL (2,0)
 		return 0xFF;  // no key pressed
 	}
 	// Firmware mailbox interface: poll MAME inputs and post key events to the
