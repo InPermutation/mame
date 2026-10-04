@@ -314,7 +314,9 @@ void hp4951b_state::io_w(offs_t offset, uint8_t data)
 		case 0x34: case 0x35: case 0x36: case 0x37:
 		case 0x39: case 0x3a: case 0x3b:
 		case 0x3c: case 0x3d: case 0x3e: case 0x3f: regs30_w(offset & 0xff, data); break;
-		case 0x18: m_kbd_matrix_latch = data; break;  // KEY BD LATCH (U401, U302 Y3)
+		case 0x18: case 0x19: case 0x1a: case 0x1b:
+		case 0x1c: case 0x1d: case 0x1e: case 0x1f:
+			m_kbd_matrix_latch = data; break;  // KEY BD LATCH (U401, U302 Y3)
 		case 0x40: port40_w(data); break;  // 810 Port A Data
 		case 0x42: port42_w(data); break;
 		case 0x47: break;  // 810 MDR (Mode Definition Reg); ignore for now
