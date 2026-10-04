@@ -60,6 +60,7 @@ private:
 	void win_w(offs_t offset, uint8_t data);
 	uint8_t bank_r(offs_t offset);
 	void bank_w(offs_t offset, uint8_t data);
+	TIMER_DEVICE_CALLBACK_MEMBER(softkey_tick);
 	uint8_t m_portc = 0x00;  // 810 Port C output latch (PC3 = buzzer)
 	uint8_t m_porta = 0x00;  // 810 Port A output latch (PA0/PA4 = 0x8000 bank, PA1/PA2 = 0x2000 window)
 	void portc_update() {
@@ -186,11 +187,23 @@ private:
 	}
 	uint8_t m_kbd_matrix_latch = 0x00;  // 74HC373 matrix drive latch (U302 output 3, 0x3800-0x3FFF, write-only side effect)
 	bool m_kbd_irq_asserted = false;  // RSTB edge-trigger state
+	uint8_t m_softkey_prev = 0x00;  // Previous SOFTKEY DECODER state (R1,R5,R6,R7)
 	// RIOT Port B (0x41): keyboard matrix sense inputs.
 	// Returns 0x00 always for now (ISR handles gracefully).
 	// TODO: implement actual column mask from m_kbd_matrix_latch + MAME inputs.
 	uint8_t riot_pb_r() {
-		return 0x00;
+		// 4951B keyboard matrix (Fig 8-31): U401 latch (0x18) drives R0-R7.
+		// For each active row, OR the MAME KEY{row} columns.
+		// Columns are active-high (IP_ACTIVE_HIGH).
+		uint8_t cols = 0x00;
+		for (int row = 0; row < 8; row++) {
+			if (m_kbd_matrix_latch & (1 << row)) {
+				char tag[8];
+				snprintf(tag, sizeof(tag), "KEY%d", row);
+				cols |= ioport(tag)->read();
+			}
+		}
+		return cols;
 	}
 	// Helper: check MAME inputs, return scancode (0xFF = no key).
 	// Host-to-emulator bridge: poll MAME input ports (KEY0-KEY8) and return
@@ -394,6 +407,26 @@ void hp4951b_state::bank_w(offs_t offset, uint8_t data)
 	// Behavior when a ROM bank is selected is unverified; we preserve
 	// RAM contents (hardware may ignore the write).
 	m_bankram[offset] = data;
+}
+
+TIMER_DEVICE_CALLBACK_MEMBER(hp4951b_state::softkey_tick)
+{
+	// SOFTKEY DECODER (Fig 8-31): monitors R1,R5,R6,R7 (KEY1,KEY5,KEY6,KEY7).
+	// Triggers RSTB on rising edge (key press, not hold).
+	// Rows: R1=KEY1 (P-W), R5=KEY5 (DEL,1-7), R6=KEY6 (arrows,RTN,SHIFT,CNTL,SPACE), R7=KEY7 (EXIT,F1-F6,MORE)
+	uint8_t soft = 0;
+	if (ioport("KEY1")->read()) soft |= 0x02;  // R1
+	if (ioport("KEY5")->read()) soft |= 0x20;  // R5
+	if (ioport("KEY6")->read()) soft |= 0x40;  // R6
+	if (ioport("KEY7")->read()) soft |= 0x80;  // R7
+
+	uint8_t rising = soft & ~m_softkey_prev;
+	m_softkey_prev = soft;
+
+	if (rising && !m_kbd_irq_asserted) {
+		m_kbd_irq_asserted = true;
+		m_maincpu->set_input_line(NSC800_RSTB, ASSERT_LINE);
+	}
 }
 
 void hp4951b_state::pager_w(uint8_t data)
@@ -700,9 +733,9 @@ void hp4951b_state::hp4951b(machine_config &config)
 	m_crtc->set_char_width(8);
 	m_crtc->set_update_row_callback(FUNC(hp4951b_state::crtc_update_row));
 
-	// Keyboard IRQ disabled: RSTB ISR destabilizes the firmware (POST restart).
-	// Focus on diagnostics failures first (RAM8-0, RAMA, etc.), then revisit.
-	// TIMER(config, "kbd_irq").configure_periodic(FUNC(hp4951b_state::kbd_irq_poll), attotime::from_hz(60));
+	// SOFTKEY DECODER: RSTB on R1/R5/R6/R7 key press (edge-triggered).
+	// Polls at 60Hz for MAME input edges; hardware is combinational.
+	TIMER(config, "softkey").configure_periodic(FUNC(hp4951b_state::softkey_tick), attotime::from_hz(60));
 }
 
 
