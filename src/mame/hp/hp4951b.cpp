@@ -106,11 +106,18 @@ private:
 	// 74HC373 (scancode latch) at 0xC3.
 	// The firmware poll routine (fixed ROM 0x1BBB) does:
 	//   IN (0xC3) -> (0x7B58), (0x7B56)=1, OUT (0xC1)=0x38 (ack).
-	// No IRQ, no ready bit: hardware holds the last scancode;
-	// firmware polls via 0x1BBB when it wants it.
+	// No IRQ, no ready bit, no timer: the hardware scanner is free-running.
+	// On read, if a MAME key is currently pressed, return its matrix
+	// scancode; otherwise return the latched value (for the boot loopback
+	// test, which writes patterns via OUT (C3H) and reads them back).
 	uint8_t kbd_r(offs_t offset) {
 		switch (offset & 3) {
-			case 3: return m_kbd_latch;  // 74HC373 scancode latch
+			case 3: {
+				uint8_t sc = get_scancode();
+				if (sc != 0xFF)
+					return sc;  // hardware scanner: current key
+				return m_kbd_latch;  // boot test: latched pattern
+			}
 			default: return 0x00;
 		}
 	}
@@ -271,24 +278,6 @@ private:
 	// in ROM, so the driver implements the firmware-to-application contract
 	// directly. This is the firmware API, not a hack.
 	// CPU 0x7D64 = m_mainram[0x3D64], CPU 0x7D65 = m_mainram[0x3D65].
-	TIMER_DEVICE_CALLBACK_MEMBER(kbd_poll) {
-		uint8_t sc = get_scancode();
-		if (sc == 0xFF) {
-			m_last_sc = 0xFF;  // key released: re-arm edge detector
-			return;
-		}
-		// Edge detection: inject only on a new press, not every 50 ms
-		// while held (fixes kbd-repeat; HW does not auto-repeat).
-		if (sc == m_last_sc)
-			return;
-		m_last_sc = sc;
-		// Hardware model: MAME key -> matrix scancode into 0xC3 latch.
-		// Firmware's 0x1BBB routine does IN (0xC3), decodes the scancode,
-		// writes the result to its internal mailboxes (0x7B58/0x7B56 for
-		// keyboard, 0x7D65/0x7D64 for menu), acks via OUT (0xC1)=0x38.
-		// Driver does NOT write to firmware mailboxes directly.
-		kbd_w(3, sc);
-	}
 	uint8_t regs50_r(offs_t offset) { return m_regs50[offset & 0xf]; }
 	void regs50_w(offs_t offset, uint8_t data) { m_regs50[offset & 0xf] = data; }
 
@@ -317,7 +306,6 @@ private:
 	uint8_t m_regs50[16] = { 0 };
 	uint8_t m_scc_b_data = 0;
 	uint8_t m_scc_a_data = 0;
-	uint8_t m_last_sc = 0xFF;  // edge detector for kbd_poll (0xFF = idle)
 	uint8_t m_staged_ascii = 0x00;  // ASCII staged on port 0x40 for handler 2
 };
 
@@ -782,8 +770,6 @@ void hp4951b_state::hp4951b(machine_config &config)
 	m_crtc->set_show_border_area(false);
 	m_crtc->set_char_width(8);
 	m_crtc->set_update_row_callback(FUNC(hp4951b_state::crtc_update_row));
-
-	TIMER(config, "kbd_poll").configure_periodic(FUNC(hp4951b_state::kbd_poll), attotime::from_msec(50));
 }
 
 
