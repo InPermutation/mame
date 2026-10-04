@@ -53,6 +53,7 @@ private:
 	uint8_t io_r(offs_t offset);
 	uint8_t io_r_impl(offs_t offset);
 	void io_w(offs_t offset, uint8_t data);
+	TIMER_DEVICE_CALLBACK_MEMBER(kbd_irq_poll);
 
 
 	void pager_w(uint8_t data);
@@ -76,6 +77,7 @@ private:
 		m_portc &= ~data;
 		// PC1 (bit 1) acks the keyboard RSTB interrupt: clear the IRQ line.
 		if (data & 0x02) {
+			logerror("hp4951b: PC1 ACK (clear), pc=%04x\\n", m_maincpu->pc());
 			m_maincpu->set_input_line(NSC800_RSTB, CLEAR_LINE);
 		}
 		portc_update();
@@ -85,6 +87,7 @@ private:
 		m_portc |= data;
 		// PC1 set also acks (the 0x0056 routine toggles PC1).
 		if (data & 0x02) {
+			logerror("hp4951b: PC1 ACK (set), pc=%04x\\n", m_maincpu->pc());
 			m_maincpu->set_input_line(NSC800_RSTB, CLEAR_LINE);
 		}
 		portc_update();
@@ -274,6 +277,19 @@ private:
 	uint8_t m_scc_b_data = 0;
 	uint8_t m_scc_a_data = 0;
 };
+
+// Keyboard IRQ poll: models the discrete NAND/flip-flop chain that
+// asserts NSC800 RSTB when a key is pressed.
+TIMER_DEVICE_CALLBACK_MEMBER(hp4951b_state::kbd_irq_poll)
+{
+	uint8_t sc = get_host_key_matrix_position();
+	if (sc != 0xFF) {
+		logerror("hp4951b: RSTB ASSERT (key sc=%02x, pc=%04x)\\n", sc, m_maincpu->pc());
+		m_maincpu->set_input_line(NSC800_RSTB, ASSERT_LINE);
+	} else {
+		m_maincpu->set_input_line(NSC800_RSTB, CLEAR_LINE);
+	}
+}
 
 
 void hp4951b_state::mem_map(address_map &map)
@@ -744,9 +760,9 @@ void hp4951b_state::hp4951b(machine_config &config)
 	m_crtc->set_char_width(8);
 	m_crtc->set_update_row_callback(FUNC(hp4951b_state::crtc_update_row));
 
-	// Keyboard IRQ disabled for now (RSTB vector crashes).
-	// TODO: debug why RSTB ISR at 0x0034 resets the device.
-	// TIMER(config, "kbd_irq").configure_periodic(FUNC(hp4951b_state::kbd_irq_poll), attotime::from_hz(60));
+	// Keyboard IRQ: discrete logic asserts RSTB on key press.
+	// Poll MAME inputs at 60Hz to drive the RSTB line.
+	TIMER(config, "kbd_irq").configure_periodic(FUNC(hp4951b_state::kbd_irq_poll), attotime::from_hz(60));
 }
 
 
