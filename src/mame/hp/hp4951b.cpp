@@ -187,7 +187,6 @@ private:
 	}
 	uint8_t m_kbd_matrix_latch = 0x00;  // 74HC373 matrix drive latch (U302 output 3, 0x3800-0x3FFF, write-only side effect)
 	bool m_kbd_irq_asserted = false;  // RSTB latch (set by SOFTKEY DECODER, cleared by PC1)
-	uint8_t m_softkey_prev = 0x00;  // Prev R1/R5/R6/R7 state (prevent re-trigger on hold)
 	// RIOT Port B (0x41): keyboard matrix sense inputs.
 	// Returns 0x00 always for now (ISR handles gracefully).
 	// TODO: implement actual column mask from m_kbd_matrix_latch + MAME inputs.
@@ -412,31 +411,21 @@ void hp4951b_state::bank_w(offs_t offset, uint8_t data)
 TIMER_DEVICE_CALLBACK_MEMBER(hp4951b_state::softkey_tick)
 {
 	// SOFTKEY DECODER (Fig 8-31): monitors R1,R5,R6,R7 (KEY1,KEY5,KEY6,KEY7).
-	// Hardware latch: set on key press, cleared by PC1. Does not re-trigger
-	// while key is held (requires release + re-press). We model this with
-	// edge detection on the softkey state.
-	if (m_kbd_irq_asserted)
-		return;  // Already latched, wait for PC1 ack.
-
+	// Hardware latch: set when softkey active, cleared by PC1 (0x42/0x4A).
 	uint8_t soft = 0;
 	if (ioport("KEY1")->read()) soft |= 0x02;  // R1
 	if (ioport("KEY5")->read()) soft |= 0x20;  // R5
 	if (ioport("KEY6")->read()) soft |= 0x40;  // R6
 	if (ioport("KEY7")->read()) soft |= 0x80;  // R7
 
-	// Only trigger on rising edge (new press, not hold).
-	// 1KRO: if multiple softkey rows are active, don't trigger (undefined HW).
-	uint8_t rising = soft & ~m_softkey_prev;
-	m_softkey_prev = soft;
-
-	// Count active rows in 'rising'; 1KRO hardware only handles one.
 	int rows = 0;
-	if (rising & 0x02) rows++;  // R1
-	if (rising & 0x20) rows++;  // R5
-	if (rising & 0x40) rows++;  // R6
-	if (rising & 0x80) rows++;  // R7
+	if (soft & 0x02) rows++;  // R1
+	if (soft & 0x20) rows++;  // R5
+	if (soft & 0x40) rows++;  // R6
+	if (soft & 0x80) rows++;  // R7
 
-	if (rows == 1) {
+	// 1KRO: only latch if exactly one row active.
+	if (rows == 1 && !m_kbd_irq_asserted) {
 		m_kbd_irq_asserted = true;
 		m_maincpu->set_input_line(NSC800_RSTB, ASSERT_LINE);
 	}
