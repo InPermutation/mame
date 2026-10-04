@@ -282,21 +282,12 @@ private:
 		if (sc == m_last_sc)
 			return;
 		m_last_sc = sc;
-		// Hardware model: MAME key -> scancode into 0xC3 latch, set ready.
-		// Firmware's 0x1BBB routine (polled, not ISR) does IN (0xC3),
-		// writes to mailbox 0x7B58/0x7B56, acks via OUT (0xC1)=0x38.
-		// No direct mailbox writes; no IRQ.
+		// Hardware model: MAME key -> matrix scancode into 0xC3 latch.
+		// Firmware's 0x1BBB routine does IN (0xC3), decodes the scancode,
+		// writes the result to its internal mailboxes (0x7B58/0x7B56 for
+		// keyboard, 0x7D65/0x7D64 for menu), acks via OUT (0xC1)=0x38.
+		// Driver does NOT write to firmware mailboxes directly.
 		kbd_w(3, sc);
-		// Menu interface (diagnostics): 0x7D64 (flag) / 0x7D65 (ID).
-		// The menu polls these directly; 0xC3 is for the keyboard path.
-		// Restore the menu writes (were removed; menu went dead).
-		// TODO: determine if menu should also use 0xC3, or if this is correct.
-		m_mainram[0x3D64] = 0x01;
-		m_mainram[0x3D65] = sc;
-		// Port 0x40 handshake: stage the scancode for the firmware.
-		if (sc > 0x0B) {
-			m_staged_ascii = sc;
-		}
 	}
 	uint8_t regs50_r(offs_t offset) { return m_regs50[offset & 0xf]; }
 	void regs50_w(offs_t offset, uint8_t data) { m_regs50[offset & 0xf] = data; }
