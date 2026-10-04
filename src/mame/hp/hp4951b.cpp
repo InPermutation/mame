@@ -61,6 +61,7 @@ private:
 	uint8_t bank_r(offs_t offset);
 	void bank_w(offs_t offset, uint8_t data);
 	uint8_t m_portc = 0x00;  // 810 Port C output latch (PC3 = buzzer)
+	uint8_t m_porta = 0x00;  // 810 Port A output latch (PA0/PA4 = 0x8000 bank, PA1/PA2 = 0x2000 window)
 	void portc_update() {
 		logerror("hp4951b: BUZZER %s (PC=%04x, cycles=%llu)\n",
 			(m_portc & 0x08) ? "BEEP" : "off", m_maincpu->pc(),
@@ -93,7 +94,27 @@ private:
 		}
 		portc_update();
 	}
-	void port48_w(uint8_t data) { m_port48 = data; }
+	void porta_update() {
+		// Derive banking from Port A bits (per 4951A schematic reverse-engineering):
+		// PA0+PA4 select 0x8000 bank, PA1/PA2/PA5/PA6 select 0x2000 window.
+		// Reuse the existing pager_w logic which already handles the PA patterns.
+		pager_w(m_porta);
+	}
+	void port40_w(uint8_t data) {
+		// 810 Port A Data (0x40): direct write.
+		m_porta = data;
+		porta_update();
+	}
+	void port48_w(uint8_t data) {
+		// 810 Port A Bit-Clear (0x48): write 1 to clear bit.
+		m_porta &= ~data;
+		porta_update();
+	}
+	void port4c_w(uint8_t data) {
+		// 810 Port A Bit-Set (0x4C): write 1 to set bit.
+		m_porta |= data;
+		porta_update();
+	}
 	void icr_w(uint8_t data);
 	uint8_t regs30_r(offs_t offset) { return m_regs30[offset & 0xf]; }
 	void regs30_w(offs_t offset, uint8_t data) { m_regs30[offset & 0xf] = data; }
@@ -265,7 +286,6 @@ private:
 	uint8_t m_bankstate = 0;
 	// Port 0x48 value (controls fetch vs data visibility for 0x8000 bank).
 	// When 0x48=0x11 (after RAM select), instruction fetches still see ROM.
-	uint8_t m_port48 = 0;
 	// Last ROM bank selected (for fetch when 0x48 indicates ROM fetch).
 	uint8_t m_last_rom_bank = 2; // default to 10024 (engine)
 	required_shared_ptr<uint8_t> m_mainram;
@@ -358,14 +378,14 @@ void hp4951b_state::io_w(offs_t offset, uint8_t data)
 		case 0x34: case 0x35: case 0x36: case 0x37:
 		case 0x38: case 0x39: case 0x3a: case 0x3b:
 		case 0x3c: case 0x3d: case 0x3e: case 0x3f: regs30_w(offset & 0xff, data); break;
-		case 0x40: break;  // RIOT PB data (input); writes ignored
+		case 0x40: port40_w(data); break;  // 810 Port A Data
 		case 0x42: port42_w(data); break;
 		case 0x47: break;  // 810 MDR (Mode Definition Reg); ignore for now
 		case 0x48: port48_w(data); break;
 		case 0x4a: port4a_w(data); break;
 		case 0x4e: port4e_w(data); break;
 		case 0xc0: case 0xc1: case 0xc2: case 0xc3: kbd_w(offset & 0xff, data); break;
-		case 0x4c: pager_w(data); break;
+		case 0x4c: port4c_w(data); break;  // 810 Port A Bit-Set (bank select)
 		case 0x50: case 0x51: case 0x52: case 0x53:
 		case 0x54: case 0x55: case 0x56: case 0x57:
 		case 0x58: case 0x59: case 0x5a: case 0x5b:
@@ -399,7 +419,7 @@ uint8_t hp4951b_state::bank_r(offs_t offset)
 	// fetches still see ROM, while data accesses see RAM. Detect fetches
 	// by comparing the address to the CPU's PC.
 	// (Experimental: hardware likely has separate fetch/data paths.)
-	if ((m_port48 & 0x11) == 0x11 && m_bankstate == 0)
+	if ((m_porta & 0x11) == 0x11 && m_bankstate == 0)
 	{
 		uint16_t pc = m_maincpu->pc();
 		if (offset + 0x8000 == pc)
@@ -633,6 +653,7 @@ void hp4951b_state::machine_start()
 
 	save_item(NAME(m_icr));
 	save_item(NAME(m_portc));
+	save_item(NAME(m_porta));
 }
 
 
