@@ -96,7 +96,6 @@ private:
 		// Setting PC1 does NOT ack; only the 1→0 transition does.
 		m_portc |= data;
 		portc_update();
-		portc_update();
 	}
 	void porta_update() {
 		// Derive banking from Port A bits (per 4951A schematic reverse-engineering):
