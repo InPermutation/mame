@@ -186,8 +186,7 @@ private:
 		}
 	}
 	uint8_t m_kbd_matrix_latch = 0x00;  // 74HC373 matrix drive latch (U302 output 3, 0x3800-0x3FFF, write-only side effect)
-	bool m_kbd_irq_asserted = false;  // RSTB edge-trigger state
-	uint8_t m_softkey_prev = 0x00;  // Previous SOFTKEY DECODER state (R1,R5,R6,R7)
+	bool m_kbd_irq_asserted = false;  // RSTB latch (set by SOFTKEY DECODER, cleared by PC1)
 	// RIOT Port B (0x41): keyboard matrix sense inputs.
 	// Returns 0x00 always for now (ISR handles gracefully).
 	// TODO: implement actual column mask from m_kbd_matrix_latch + MAME inputs.
@@ -412,18 +411,18 @@ void hp4951b_state::bank_w(offs_t offset, uint8_t data)
 TIMER_DEVICE_CALLBACK_MEMBER(hp4951b_state::softkey_tick)
 {
 	// SOFTKEY DECODER (Fig 8-31): monitors R1,R5,R6,R7 (KEY1,KEY5,KEY6,KEY7).
-	// Triggers RSTB on rising edge (key press, not hold).
-	// Rows: R1=KEY1 (P-W), R5=KEY5 (DEL,1-7), R6=KEY6 (arrows,RTN,SHIFT,CNTL,SPACE), R7=KEY7 (EXIT,F1-F6,MORE)
+	// Hardware is a latch: key press sets RSTB, PC1 clears it.
+	// We model the latch with m_kbd_irq_asserted.
+	if (m_kbd_irq_asserted)
+		return;  // Already latched, wait for PC1 ack.
+
 	uint8_t soft = 0;
 	if (ioport("KEY1")->read()) soft |= 0x02;  // R1
 	if (ioport("KEY5")->read()) soft |= 0x20;  // R5
 	if (ioport("KEY6")->read()) soft |= 0x40;  // R6
 	if (ioport("KEY7")->read()) soft |= 0x80;  // R7
 
-	uint8_t rising = soft & ~m_softkey_prev;
-	m_softkey_prev = soft;
-
-	if (rising && !m_kbd_irq_asserted) {
+	if (soft) {
 		m_kbd_irq_asserted = true;
 		m_maincpu->set_input_line(NSC800_RSTB, ASSERT_LINE);
 	}
