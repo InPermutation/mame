@@ -1,5 +1,5 @@
 // license:BSD-3-Clause
-// copyright-holders:Thumb (experimental bring-up)
+// copyright-holders: Jacob Krall
 /*
 
     HP 4951B Protocol Analyzer — MAME driver.
