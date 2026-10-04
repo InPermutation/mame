@@ -106,37 +106,29 @@ private:
 	// 74HC373 (scancode latch) at 0xC3.
 	// The firmware poll routine (fixed ROM 0x1BBB) does:
 	//   IN (0xC3) -> (0x7B58), (0x7B56)=1, OUT (0xC1)=0x38 (ack).
-	// No IRQ, no ready bit, no timer: the hardware scanner is free-running.
-	// On read, if a MAME key is currently pressed, return its matrix
-	// scancode; otherwise return the latched value (for the boot loopback
-	// test, which writes patterns via OUT (C3H) and reads them back).
+	// Discrete hardware scanner: returns the matrix position of the
+	// currently pressed host key, or 0xFF if none.
 	uint8_t kbd_r(offs_t offset) {
 		switch (offset & 3) {
-			case 3: {
-				uint8_t sc = get_host_key_matrix_position();
-				if (sc != 0xFF)
-					return sc;  // hardware scanner: current key
-				return m_kbd_latch;  // boot test: latched pattern
-			}
+			case 3: return get_host_key_matrix_position();
 			default: return 0x00;
 		}
 	}
 	void kbd_w(offs_t offset, uint8_t data) {
 		switch (offset & 3) {
 		case 1:  // 0xC1: acknowledge (firmware writes 0x38 after reading).
-			// No hardware state to clear; the latch holds the last scancode
-			// until the next MAME key overwrites it. The 0x38 also hits the
-			// 0x3800 matrix latch as a side effect (handled in io_w).
+			// No hardware state; the 0x38 also hits the 0x3800 matrix
+			// latch as a side effect (handled in io_w).
 			break;
-		case 3:  // 0xC3 data: latch scancode (74HC373).
-			// Hardware scanner puts the decoded scancode here.
-			m_kbd_latch = data;
+		case 3:  // 0xC3: firmware boot test writes patterns here.
+			// Hardware latch would capture them; we ignore (scanner output
+			// takes precedence via kbd_r). The boot test may fail; if so,
+			// we'll revisit.
 			break;
 		default:
 			break;
 		}
 	}
-	uint8_t m_kbd_latch = 0x00;  // 74HC373 scancode latch (port 0xC3)
 	uint8_t m_kbd_matrix_latch = 0x00;  // 74HC373 matrix drive latch (U302 output 3, 0x3800-0x3FFF, write-only side effect)
 	// Port 0x40: unknown hardware function (was used for ASCII staging in the
 	// old hack; the staging was removed). Stub for now.
@@ -597,7 +589,6 @@ void hp4951b_state::machine_start()
 	machine().add_notifier(MACHINE_NOTIFY_EXIT, machine_notify_delegate(&hp4951b_state::dump_vram, this));
 
 	save_item(NAME(m_icr));
-	save_item(NAME(m_kbd_latch));
 }
 
 
