@@ -287,9 +287,9 @@ void hp4951b_state::io_map(address_map &map)
 
 uint8_t hp4951b_state::io_r(offs_t offset)
 {
-        uint8_t v = io_r_impl(offset);
-        logerror("io_r 0x%02X = 0x%02X\n", offset& 0xff, v);
-        return v;
+	uint8_t v = io_r_impl(offset);
+	logerror("io_r 0x%02X = 0x%02X\n", offset & 0xff, v);
+	return v;
 }
 
 uint8_t hp4951b_state::io_r_impl(offs_t offset)
@@ -308,7 +308,7 @@ uint8_t hp4951b_state::io_r_impl(offs_t offset)
 			uint8_t v = riot_pb_r();
 			if (pb_count < 20 || v != 0xFF) {
 				logerror("RIOT_PB: firmware read 0x4D -> 0x%02X (latch=0x%02X, call #%d)\n",
-				       v, m_kbd_matrix_latch, ++pb_count);
+				         v, m_kbd_matrix_latch, ++pb_count);
 			}
 			return v;
 		}
@@ -323,7 +323,7 @@ uint8_t hp4951b_state::io_r_impl(offs_t offset)
 
 void hp4951b_state::io_w(offs_t offset, uint8_t data)
 {
-        logerror("io_w 0x%02X = 0x%02X\n", offset& 0xff, data);
+	logerror("io_w 0x%02X = 0x%02X\n", offset & 0xff, data);
 	// Keyboard matrix latch: U302 output 3 (A15=0,A14=0,A13=1,A12=1,A11=1).
 	// Captures D0-D7 on any I/O write in 0x3800-0x3FFF.
 	if ((offset & 0xf800) == 0x3800)
