@@ -297,12 +297,13 @@ uint8_t hp4951b_state::io_r_impl(offs_t offset)
 		case 0x34: case 0x35: case 0x36: case 0x37:
 		case 0x38: case 0x39: case 0x3a: case 0x3b:
 		case 0x3c: case 0x3d: case 0x3e: case 0x3f: return regs30_r(offset & 0xff);
-		case 0x40: {
+		case 0x41: {
 			// DEBUG: RIOT Port B (keyboard matrix sense)
+			// Per NSC810 Table I: Port B Data = xxx00001
 			static int pb_count = 0;
 			uint8_t v = riot_pb_r();
 			if (pb_count < 20 || v != 0xFF) {
-				logerror("RIOT_PB: firmware read 0x40 -> 0x%02X (latch=0x%02X, call #%d)\n",
+				logerror("RIOT_PB: firmware read 0x41 -> 0x%02X (latch=0x%02X, call #%d)\n",
 				         v, m_kbd_matrix_latch, ++pb_count);
 			}
 			return v;
