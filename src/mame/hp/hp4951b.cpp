@@ -639,7 +639,7 @@ void hp4951b_state::dump_vram()
 		fwrite(&m_mainram[0], 1, 0x2200, g);  // CPU 0x4000-0x6200
 		fclose(g);
 	}
-        logerror("At exit, pc=0x%02X\n", m_maincpu->pc());
+	logerror("At exit, pc=0x%04X\n", m_maincpu->pc());
 }
 
 
