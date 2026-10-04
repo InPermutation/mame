@@ -51,6 +51,7 @@ private:
 	void mem_map(address_map &map);
 	void io_map(address_map &map);
 	uint8_t io_r(offs_t offset);
+	uint8_t io_r_impl(offs_t offset);
 	void io_w(offs_t offset, uint8_t data);
 
 	void pager_w(uint8_t data);
@@ -286,6 +287,13 @@ void hp4951b_state::io_map(address_map &map)
 
 uint8_t hp4951b_state::io_r(offs_t offset)
 {
+        uint8_t v = io_r_impl(offset);
+        logerror("io_r 0x%02X = 0x%02X\n", offset& 0xff, v);
+        return v;
+}
+
+uint8_t hp4951b_state::io_r_impl(offs_t offset)
+{
 	switch (offset & 0xff)
 	{
 		case 0x0b: return m_crtc->register_r();
@@ -315,6 +323,7 @@ uint8_t hp4951b_state::io_r(offs_t offset)
 
 void hp4951b_state::io_w(offs_t offset, uint8_t data)
 {
+        logerror("io_w 0x%02X = 0x%02X\n", offset& 0xff, data);
 	// Keyboard matrix latch: U302 output 3 (A15=0,A14=0,A13=1,A12=1,A11=1).
 	// Captures D0-D7 on any I/O write in 0x3800-0x3FFF.
 	if ((offset & 0xf800) == 0x3800)
