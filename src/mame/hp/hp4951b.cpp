@@ -104,38 +104,32 @@ private:
 	}
 	// Keyboard matrix interface (ports 0xC0-0xC3) — discrete TTL, no MCU.
 	// 74HC373 (scancode latch) at 0xC3.
-	// 0xC1 status: bit4=ready (key available), bit5=ERROR (0 = no error).
 	// The firmware poll routine (fixed ROM 0x1BBB) does:
 	//   IN (0xC3) -> (0x7B58), (0x7B56)=1, OUT (0xC1)=0x38 (ack).
-	// No IRQ: the hardware scanner sets ready, firmware polls.
+	// No IRQ, no ready bit: hardware holds the last scancode;
+	// firmware polls via 0x1BBB when it wants it.
 	uint8_t kbd_r(offs_t offset) {
 		switch (offset & 3) {
-			case 1: return m_kbd_ready ? 0x10 : 0x00;  // ready iff key available, no error
 			case 3: return m_kbd_latch;  // 74HC373 scancode latch
 			default: return 0x00;
 		}
 	}
 	void kbd_w(offs_t offset, uint8_t data) {
 		switch (offset & 3) {
-		case 1:  // 0xC1 control
-			if (data == 0x38) {
-				// Acknowledge: clear ready flag.
-				// Issued by the firmware after reading the scancode.
-				m_kbd_ready = false;
-			}
+		case 1:  // 0xC1: acknowledge (firmware writes 0x38 after reading).
+			// No hardware state to clear; the latch holds the last scancode
+			// until the next MAME key overwrites it. The 0x38 also hits the
+			// 0x3800 matrix latch as a side effect (handled in io_w).
 			break;
-		case 3:  // 0xC3 data: latch scancode (74HC373), set ready.
-			// Hardware scanner puts the decoded scancode here;
-			// firmware polls 0xC1 bit4, reads 0xC3, acks via 0xC1.
+		case 3:  // 0xC3 data: latch scancode (74HC373).
+			// Hardware scanner puts the decoded scancode here.
 			m_kbd_latch = data;
-			m_kbd_ready = true;
 			break;
 		default:
 			break;
 		}
 	}
 	uint8_t m_kbd_latch = 0x00;  // 74HC373 scancode latch (port 0xC3)
-	bool m_kbd_ready = false;   // key available (0xC1 bit4), cleared by OUT 0xC1=0x38
 	uint8_t m_kbd_matrix_latch = 0x00;  // 74HC373 matrix drive latch (U302 output 3, 0x3800-0x3FFF, write-only side effect)
 	// Port 0x40: keyboard data port for handler 2 (RE 2026-09-28).
 	// Hardware stages ASCII here; firmware reads it via IN A,(0x40),
@@ -683,7 +677,6 @@ void hp4951b_state::machine_start()
 
 	save_item(NAME(m_icr));
 	save_item(NAME(m_kbd_latch));
-	save_item(NAME(m_kbd_ready));
 }
 
 
