@@ -259,6 +259,9 @@ void hp4951b_state::io_map(address_map &map)
 	// 8-bit I/O ports (0x00-0xFF). The 4951B places the port number on
 	// A8-A15 (Fig 8-18), but MAME abstracts this to the 8-bit port number.
 	// U302 (A11-A15) + device (A8-A9) decode is modeled in io_r/io_w.
+	// global_mask ensures the upper address byte is ignored (MAME doesn't
+	// mask it automatically for 16-bit I/O addresses from the CPU).
+	map.global_mask(0xff);
 	map(0x0000, 0x00ff).rw(FUNC(hp4951b_state::io_r), FUNC(hp4951b_state::io_w));
 }
 
