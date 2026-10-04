@@ -139,11 +139,7 @@ private:
 		}
 	}
 	uint8_t m_kbd_matrix_latch = 0x00;  // 74HC373 matrix drive latch (U302 output 3, 0x3800-0x3FFF, write-only side effect)
-	// Port 0x40: unknown hardware function (was used for ASCII staging in the
-	// old hack; the staging was removed). Stub for now.
-	uint8_t kbd_data_r() { return 0x00; }
-	void kbd_data_w(uint8_t data) { /* ignore */ }
-	// RIOT Port B (0x4E): keyboard matrix sense inputs.
+	// RIOT Port B (0x40): keyboard matrix sense inputs.
 	// The firmware drives a row via the 0x3800 latch, then reads PB to get
 	// the column states. For now, return 0xFF (no keys, pull-ups high).
 	// TODO: decode m_kbd_matrix_latch to determine active row, then return
@@ -301,13 +297,12 @@ uint8_t hp4951b_state::io_r_impl(offs_t offset)
 		case 0x34: case 0x35: case 0x36: case 0x37:
 		case 0x38: case 0x39: case 0x3a: case 0x3b:
 		case 0x3c: case 0x3d: case 0x3e: case 0x3f: return regs30_r(offset & 0xff);
-		case 0x40: return kbd_data_r();
-		case 0x4d: {
+		case 0x40: {
 			// DEBUG: RIOT Port B (keyboard matrix sense)
 			static int pb_count = 0;
 			uint8_t v = riot_pb_r();
 			if (pb_count < 20 || v != 0xFF) {
-				logerror("RIOT_PB: firmware read 0x4D -> 0x%02X (latch=0x%02X, call #%d)\n",
+				logerror("RIOT_PB: firmware read 0x40 -> 0x%02X (latch=0x%02X, call #%d)\n",
 				         v, m_kbd_matrix_latch, ++pb_count);
 			}
 			return v;
@@ -337,7 +332,7 @@ void hp4951b_state::io_w(offs_t offset, uint8_t data)
 		case 0x34: case 0x35: case 0x36: case 0x37:
 		case 0x38: case 0x39: case 0x3a: case 0x3b:
 		case 0x3c: case 0x3d: case 0x3e: case 0x3f: regs30_w(offset & 0xff, data); break;
-		case 0x40: kbd_data_w(data); break;
+		case 0x40: break;  // RIOT PB data (input); writes ignored
 		case 0x47: port47_w(data); break;
 		case 0x48: port48_w(data); break;
 		case 0xc0: case 0xc1: case 0xc2: case 0xc3: kbd_w(offset & 0xff, data); break;
