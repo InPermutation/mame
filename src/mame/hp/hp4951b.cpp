@@ -163,16 +163,10 @@ private:
 	}
 	uint8_t m_kbd_matrix_latch = 0x00;  // 74HC373 matrix drive latch (U302 output 3, 0x3800-0x3FFF, write-only side effect)
 	// RIOT Port B (0x41): keyboard matrix sense inputs.
-	// The firmware drives a row via the 0x3800 latch, then reads PB to get
-	// the column states. Returns 0x00 when no key is pressed (ISR checks
-	// OR A / JR Z = no key). TODO: implement actual column mask.
+	// Returns 0x00 always for now (ISR handles gracefully).
+	// TODO: implement actual column mask from m_kbd_matrix_latch + MAME inputs.
 	uint8_t riot_pb_r() {
-		uint8_t sc = get_host_key_matrix_position();
-		if (sc == 0xFF)
-			return 0x00;  // no key: ISR sees Z=1, returns
-		// Key pressed: return non-zero so ISR decodes.
-		// TODO: return actual column bits for the active row.
-		return 0xFF;
+		return 0x00;
 	}
 	// Helper: check MAME inputs, return scancode (0xFF = no key).
 	// Host-to-emulator bridge: poll MAME input ports (KEY0-KEY8) and return
