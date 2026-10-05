@@ -15,7 +15,7 @@
         PA1/PA2 -> U103: ROM 2 page select (4x 8KB)
       Port B (0x41): keyboard matrix columns
       Port C: PC3=buzzer, PC1=RSTB ack
-    Keyboard: 0x30-0x37 (U302 Y6) latch -> R0-R7 rows; RSTB on R1/R5/R6/R7 (softkeys)
+    Keyboard: 0x18-0x1F (U302 Y3) latch -> R0-R7 rows; RSTB on R1/R5/R6/R7 (softkeys)
     I/O decode: U302 (A11-A15), byte-backwards (port on A8-A15, MAME abstracts)
 
     Memory map (Fig 8-7):
@@ -205,7 +205,7 @@ private:
 	// Returns 0x00 always for now (ISR handles gracefully).
 	// TODO: implement actual column mask from m_kbd_matrix_latch + MAME inputs.
 	uint8_t riot_pb_r() {
-		// 4951B keyboard matrix (Fig 8-31): U401 latch (0x30) drives R0-R7.
+		// 4951B keyboard matrix (Fig 8-31): U401 latch (0x18) drives R0-R7.
 		// Hardware: only one row should be active at a time. If multiple rows
 		// are selected (e.g., latch=0xFF on reset), the result is undefined;
 		// we return 0x00 to avoid confusing the ISR.
@@ -310,7 +310,7 @@ uint8_t hp4951b_state::io_r_impl(offs_t offset)
 		case 0x34: case 0x35: case 0x36: case 0x37:
 		case 0x39: case 0x3a: case 0x3b:
 		case 0x3c: case 0x3d: case 0x3e: case 0x3f: return regs30_r(offset & 0xff);
-		// 0x30: KEY BD LATCH (U401) is write-only; no read case (open bus)
+		// 0x18: KEY BD LATCH (U401) is write-only; no read case (open bus)
 		case 0x41: {
 			// DEBUG: RIOT Port B (keyboard matrix sense)
 			// Per NSC810 Table I: Port B Data = xxx00001
@@ -343,9 +343,9 @@ void hp4951b_state::io_w(offs_t offset, uint8_t data)
 		case 0x34: case 0x35: case 0x36: case 0x37:
 		case 0x39: case 0x3a: case 0x3b:
 		case 0x3c: case 0x3d: case 0x3e: case 0x3f: regs30_w(offset & 0xff, data); break;
-		case 0x30: case 0x31: case 0x32: case 0x33:
-		case 0x34: case 0x35: case 0x36: case 0x37:
-			m_kbd_matrix_latch = data; break;  // KEY BD LATCH (U401, U302 Y6)
+		case 0x18: case 0x19: case 0x1a: case 0x1b:
+		case 0x1c: case 0x1d: case 0x1e: case 0x1f:
+			m_kbd_matrix_latch = data; break;  // KEY BD LATCH (U401, U302 Y3)
 		case 0x40: port40_w(data); break;  // 810 Port A Data
 		case 0x42: port42_w(data); break;
 		case 0x47: break;  // 810 MDR (Mode Definition Reg); ignore for now
