@@ -323,6 +323,9 @@ uint8_t hp4951b_state::io_r_impl(offs_t offset)
 {
 	switch (offset & 0xff)
 	{
+		// C/S (0x08-0x0F): CRTC MC6845. R/W=A9, RS\=A8.
+		// 0x08: W index, 0x09: W/R data, 0x0A: R index, 0x0B: R status.
+		// 0x0A (read index) not yet implemented; firmware doesn't use it.
 		case 0x0b: return m_crtc->register_r();
 		case 0x30: case 0x31: case 0x32: case 0x33: return scc_r(offset & 0xff);
 		case 0x34: case 0x35: case 0x36: case 0x37:
