@@ -205,22 +205,33 @@ private:
 	// Returns 0x00 always for now (ISR handles gracefully).
 	// TODO: implement actual column mask from m_kbd_matrix_latch + MAME inputs.
 	uint8_t riot_pb_r() {
-		// 4951B keyboard matrix (Fig 8-31): U401 latch (0x18) drives R0-R7.
-		// Rows are active-low: R301 pull-ups hold R0-R7 high; latch drives
-		// selected row low (bit=0 selects). Columns are active-high.
-		// Latch=0xFF (reset) = no rows selected -> return 0x00 (no key).
+		// 4951B keyboard matrix (Fig 8-31):
+		//   U401 latch (0x18) drives COLUMNS C0-C7 (active-low, bit=0 selects).
+		//   ROWS R0-R7 go to RIOT Port B (PB0-PB7), with R301 pull-ups.
+		//   Key at (R,C) connects row to column; if column is driven low,
+		//   the row goes low (active-low).
+		//   Latch=0xFF (reset) = no columns selected -> 0xFF (all rows high).
 		uint8_t latch = m_kbd_matrix_latch;
-		// Count selected rows (bits LOW); if != 1, return 0x00 (none/invalid)
-		int rows = 0;
-		int sel_row = -1;
-		for (int r = 0; r < 8; r++) {
-			if (!(latch & (1 << r))) { rows++; sel_row = r; }
+		// Find selected column (bit LOW). Must be exactly one.
+		int sel_col = -1;
+		for (int c = 0; c < 8; c++) {
+			if (!(latch & (1 << c))) {
+				if (sel_col != -1) return 0xFF; // Multiple = invalid
+				sel_col = c;
+			}
 		}
-		if (rows != 1) return 0x00;
-		char tag[8];
-		snprintf(tag, sizeof(tag), "KEY%d", sel_row);
-		// MAME inputs are ACTIVE_HIGH; hardware columns are active-high. Direct.
-		return ioport(tag)->read();
+		if (sel_col == -1) return 0xFF; // None selected
+		// Build Port B: for each row R, check key at (R, sel_col).
+		// MAME KEY{R} has bit (1<<C) for the key at (R,C). ACTIVE_HIGH.
+		uint8_t portb = 0xFF;
+		for (int r = 0; r < 8; r++) {
+			char tag[8];
+			snprintf(tag, sizeof(tag), "KEY%d", r);
+			if (ioport(tag)->read() & (1 << sel_col)) {
+				portb &= ~(1 << r); // Row goes low (active-low)
+			}
+		}
+		return portb;
 	}
 	// Helper: check MAME inputs, return scancode (0xFF = no key).
 	// Host-to-emulator bridge: poll MAME input ports (KEY0-KEY8) and return
