@@ -23,7 +23,7 @@
       0x18-0x1F: KEY BD LATCH (U401)
       0x10-0x17: POD
       0x08-0x0F: C/S (0x08/0x09 = CRTC MC6845)
-      0x30-0x37: X6 (SCC? 265 writes in POST)
+      0x30-0x37: X6 (ACIA? 265 writes in POST)
 
     Memory map (Fig 8-7):
       0x0000: ROM 0 (U101/10021, 8KB)
@@ -139,17 +139,17 @@ private:
 	}
 	uint8_t regs30_r(offs_t offset) { return m_regs30[offset & 0xf]; }
 	void regs30_w(offs_t offset, uint8_t data) { m_regs30[offset & 0xf] = data; }
-	// Z8530 SCC stub (DLC) at 0x30-0x33
+	// Z8530 ACIA stub (DLC) at 0x30-0x33
 	// 0x30: Ch B control, 0x31: Ch A control, 0x32: Ch B data, 0x33: Ch A data
 	// DLC test does loopback: OUT data, IN data expects same byte back.
 	// Control reads return 0x44 (Tx buffer empty, DCD/CTS active = "healthy").
-	uint8_t scc_r(offs_t offset) {
+	uint8_t acia_r(offs_t offset) {
 		uint8_t v;
 		switch (offset & 3) {
 			case 0: v = 0x44; break;  // B control: healthy status
 			case 1: v = 0x44; break;  // A control: healthy status
-			case 2: v = m_scc_b_data; break;  // B data: loopback
-			case 3: v = m_scc_a_data; break;  // A data: loopback
+			case 2: v = m_acia_b_data; break;  // B data: loopback
+			case 3: v = m_acia_a_data; break;  // A data: loopback
 			default: v = 0xff; break;
 		}
 		return v;
@@ -158,15 +158,15 @@ private:
 	// - After OUT (0x30),0xBE, IN (0x32) must have bit2=1
 	// - After OUT (0x32),0x41, IN (0x32) must have bit3=1
 	// Real Z8530 behavior TBD; these mimic the observed hardware responses.
-	void scc_w(offs_t offset, uint8_t data) {
+	void acia_w(offs_t offset, uint8_t data) {
 		switch (offset & 3) {
 			case 0:
-				if (data == 0xBE) m_scc_b_data |= 0x04;
+				if (data == 0xBE) m_acia_b_data |= 0x04;
 				break;
 			case 2:
-				m_scc_b_data = (data == 0x41) ? (data | 0x08) : data;
+				m_acia_b_data = (data == 0x41) ? (data | 0x08) : data;
 				break;
-			case 3: m_scc_a_data = data; break;
+			case 3: m_acia_a_data = data; break;
 			default: break;
 		}
 	}
@@ -283,8 +283,8 @@ private:
 	std::unique_ptr<uint8_t[]> m_winram;
 	uint8_t m_regs30[16] = { 0 };
 	uint8_t m_regs50[16] = { 0 };
-	uint8_t m_scc_b_data = 0;
-	uint8_t m_scc_a_data = 0;
+	uint8_t m_acia_b_data = 0;
+	uint8_t m_acia_a_data = 0;
 };
 
 
@@ -327,7 +327,7 @@ uint8_t hp4951b_state::io_r_impl(offs_t offset)
 		// 0x08/0x0C: W index, 0x09/0x0D: W data, 0x0A/0x0E: R index, 0x0B/0x0F: R status.
 		// 0x0A/0x0E (read index) not yet implemented; firmware doesn't use it.
 		case 0x0b: case 0x0f: return m_crtc->register_r();
-		case 0x30: case 0x31: case 0x32: case 0x33: return scc_r(offset & 0xff);
+		case 0x30: case 0x31: case 0x32: case 0x33: return acia_r(offset & 0xff);
 		case 0x34: case 0x35: case 0x36: case 0x37:
 		case 0x39: case 0x3a: case 0x3b:
 		case 0x3c: case 0x3d: case 0x3e: case 0x3f: return regs30_r(offset & 0xff);
@@ -361,7 +361,7 @@ void hp4951b_state::io_w(offs_t offset, uint8_t data)
 		// C/S: CRTC (A10 don't-care -> mirrors at 0x0C-0x0F)
 		case 0x08: case 0x0c: m_crtc->address_w(data); break;
 		case 0x09: case 0x0d: m_crtc->register_w(data); break;
-		case 0x30: case 0x31: case 0x32: case 0x33: scc_w(offset & 0xff, data); break;
+		case 0x30: case 0x31: case 0x32: case 0x33: acia_w(offset & 0xff, data); break;
 		case 0x34: case 0x35: case 0x36: case 0x37:
 		case 0x39: case 0x3a: case 0x3b:
 		case 0x3c: case 0x3d: case 0x3e: case 0x3f: regs30_w(offset & 0xff, data); break;
