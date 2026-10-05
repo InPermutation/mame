@@ -69,9 +69,11 @@ private:
 	void dump_vram();
 	void mem_map(address_map &map);
 	void io_map(address_map &map);
-	uint8_t io_r(offs_t offset);
-	uint8_t io_r_impl(offs_t offset);
-	void io_w(offs_t offset, uint8_t data);
+	void kbd_latch_w(uint8_t data);
+	void crtc_address_w(uint8_t data);
+	void crtc_register_w(uint8_t data);
+	uint8_t crtc_register_r();
+	uint8_t crtc_status_r();
 
 
 	void pager_w(uint8_t data);
@@ -319,119 +321,52 @@ void hp4951b_state::mem_map(address_map &map)
 
 
 
+void hp4951b_state::kbd_latch_w(uint8_t data) { m_kbd_matrix_latch = data; }
+void hp4951b_state::crtc_address_w(uint8_t data) { m_crtc->address_w(data); }
+void hp4951b_state::crtc_register_w(uint8_t data) { m_crtc->register_w(data); }
+uint8_t hp4951b_state::crtc_register_r() { return m_crtc->register_r(); }
+uint8_t hp4951b_state::crtc_status_r() { return m_crtc->register_r(); }
+
 void hp4951b_state::io_map(address_map &map)
 {
-	// 8-bit I/O ports (0x00-0xFF). The 4951B places the port number on
-	// A8-A15 (Fig 8-18), but MAME abstracts this to the 8-bit port number.
-	// U302 (A11-A15) + device (A8-A9) decode is modeled in io_r/io_w.
-	// global_mask ensures the upper address byte is ignored (MAME doesn't
-	// mask it automatically for 16-bit I/O addresses from the CPU).
+	// 8-bit I/O ports. Schematic-derived ranges:
+	// 0xC0-0xFF: DLC (Z8530)
+	// 0x40-0x7F: RIOT (NSC810)
+	// 0x30-0x37: X6 (ACIA HD6350)
+	// 0x20-0x27: TIC CLOCK (not yet emulated)
+	// 0x18-0x1F: KEY BD LATCH (U401, write-only)
+	// 0x10-0x17: POD (not yet emulated)
+	// 0x08-0x0F: C/S (CRTC MC6845, A10 mirror)
 	map.global_mask(0xff);
-	map(0x0000, 0x00ff).rw(FUNC(hp4951b_state::io_r), FUNC(hp4951b_state::io_w));
+
+	// DLC (0xC0-0xFF)
+	map(0x00c0, 0x00ff).rw(FUNC(hp4951b_state::dlc_r), FUNC(hp4951b_state::dlc_w));
+
+	// RIOT (0x40-0x7F) - specific registers
+	map(0x0040, 0x0040).w(FUNC(hp4951b_state::port40_w)); // Port A Data
+	map(0x0041, 0x0041).r(FUNC(hp4951b_state::riot_pb_r)); // Port B Data
+	map(0x0042, 0x0042).w(FUNC(hp4951b_state::port42_w)); // Port C Data
+	map(0x0048, 0x0048).w(FUNC(hp4951b_state::port48_w));
+	map(0x004a, 0x004a).w(FUNC(hp4951b_state::port4a_w)); // Port C bit-clear
+	map(0x004c, 0x004c).w(FUNC(hp4951b_state::port4c_w)); // Port A bit-set
+	map(0x004e, 0x004e).w(FUNC(hp4951b_state::port4e_w)); // Port C bit-set
+	map(0x0050, 0x005f).rw(FUNC(hp4951b_state::regs50_r), FUNC(hp4951b_state::regs50_w));
+
+	// X6 ACIA (0x30-0x37)
+	map(0x0030, 0x0033).rw(FUNC(hp4951b_state::acia_r), FUNC(hp4951b_state::acia_w));
+	map(0x0034, 0x0037).rw(FUNC(hp4951b_state::regs30_r), FUNC(hp4951b_state::regs30_w));
+	map(0x0039, 0x003f).rw(FUNC(hp4951b_state::regs30_r), FUNC(hp4951b_state::regs30_w));
+
+	// KEY BD LATCH (0x18-0x1F, write-only)
+	map(0x0018, 0x001f).w(FUNC(hp4951b_state::kbd_latch_w));
+
+	// C/S CRTC (0x08-0x0F, A10 mirror)
+	map(0x0008, 0x0008).mirror(0x0004).w(FUNC(hp4951b_state::crtc_address_w));
+	map(0x0009, 0x0009).mirror(0x0004).rw(FUNC(hp4951b_state::crtc_register_r), FUNC(hp4951b_state::crtc_register_w));
+	map(0x000b, 0x000b).mirror(0x0004).r(FUNC(hp4951b_state::crtc_status_r));
 }
 
-uint8_t hp4951b_state::io_r(offs_t offset)
-{
-	uint8_t v = io_r_impl(offset);
-	logerror("io_r 0x%02X = 0x%02X\n", offset & 0xff, v);
-	return v;
-}
 
-uint8_t hp4951b_state::io_r_impl(offs_t offset)
-{
-	switch (offset & 0xff)
-	{
-		// C/S (0x08-0x0F): CRTC MC6845. R/W=A9, RS\=A8, A10 don't-care.
-		// 0x08/0x0C: W index, 0x09/0x0D: W data, 0x0A/0x0E: R index, 0x0B/0x0F: R status.
-		// 0x0A/0x0E (read index) not yet implemented; firmware doesn't use it.
-		case 0x0b: case 0x0f: return m_crtc->register_r();
-		case 0x30: case 0x31: case 0x32: case 0x33: return acia_r(offset & 0xff);
-		case 0x34: case 0x35: case 0x36: case 0x37:
-		case 0x39: case 0x3a: case 0x3b:
-		case 0x3c: case 0x3d: case 0x3e: case 0x3f: return regs30_r(offset & 0xff);
-		// 0x18: KEY BD LATCH (U401) is write-only; no read case (open bus)
-		case 0x41: {
-			// DEBUG: RIOT Port B (keyboard matrix sense)
-			// Per NSC810 Table I: Port B Data = xxx00001
-			static int pb_count = 0;
-			uint8_t v = riot_pb_r();
-			if (pb_count < 20 || v != 0xFF) {
-				logerror("RIOT_PB: firmware read 0x41 -> 0x%02X (latch=0x%02X, call #%d)\n",
-				         v, m_kbd_matrix_latch, ++pb_count);
-			}
-			return v;
-		}
-		case 0xc0: case 0xc1: case 0xc2: case 0xc3:
-		case 0xc4: case 0xc5: case 0xc6: case 0xc7:
-		case 0xc8: case 0xc9: case 0xca: case 0xcb:
-		case 0xcc: case 0xcd: case 0xce: case 0xcf:
-		case 0xd0: case 0xd1: case 0xd2: case 0xd3:
-		case 0xd4: case 0xd5: case 0xd6: case 0xd7:
-		case 0xd8: case 0xd9: case 0xda: case 0xdb:
-		case 0xdc: case 0xdd: case 0xde: case 0xdf:
-		case 0xe0: case 0xe1: case 0xe2: case 0xe3:
-		case 0xe4: case 0xe5: case 0xe6: case 0xe7:
-		case 0xe8: case 0xe9: case 0xea: case 0xeb:
-		case 0xec: case 0xed: case 0xee: case 0xef:
-		case 0xf0: case 0xf1: case 0xf2: case 0xf3:
-		case 0xf4: case 0xf5: case 0xf6: case 0xf7:
-		case 0xf8: case 0xf9: case 0xfa: case 0xfb:
-		case 0xfc: case 0xfd: case 0xfe: case 0xff:
-			return dlc_r(offset & 0xff);
-		case 0x50: case 0x51: case 0x52: case 0x53:
-		case 0x54: case 0x55: case 0x56: case 0x57:
-		case 0x58: case 0x59: case 0x5a: case 0x5b:
-		case 0x5c: case 0x5d: case 0x5e: case 0x5f: return regs50_r(offset & 0xff);
-		default: return 0xff;
-	}
-}
-
-void hp4951b_state::io_w(offs_t offset, uint8_t data)
-{
-	logerror("io_w 0x%02X = 0x%02X\n", offset & 0xff, data);
-	// 8-bit ports (decode A7-A0 only)
-	switch (offset & 0xff)
-	{
-		// C/S: CRTC (A10 don't-care -> mirrors at 0x0C-0x0F)
-		case 0x08: case 0x0c: m_crtc->address_w(data); break;
-		case 0x09: case 0x0d: m_crtc->register_w(data); break;
-		case 0x30: case 0x31: case 0x32: case 0x33: acia_w(offset & 0xff, data); break;
-		case 0x34: case 0x35: case 0x36: case 0x37:
-		case 0x39: case 0x3a: case 0x3b:
-		case 0x3c: case 0x3d: case 0x3e: case 0x3f: regs30_w(offset & 0xff, data); break;
-		case 0x18: case 0x19: case 0x1a: case 0x1b:
-		case 0x1c: case 0x1d: case 0x1e: case 0x1f:
-			m_kbd_matrix_latch = data; break;  // KEY BD LATCH (U401, U302 Y3)
-		case 0x40: port40_w(data); break;  // 810 Port A Data
-		case 0x42: port42_w(data); break;
-		case 0x47: break;  // 810 MDR (Mode Definition Reg); ignore for now
-		case 0x48: port48_w(data); break;
-		case 0x4a: port4a_w(data); break;
-		case 0x4e: port4e_w(data); break;
-		case 0xc0: case 0xc1: case 0xc2: case 0xc3:
-		case 0xc4: case 0xc5: case 0xc6: case 0xc7:
-		case 0xc8: case 0xc9: case 0xca: case 0xcb:
-		case 0xcc: case 0xcd: case 0xce: case 0xcf:
-		case 0xd0: case 0xd1: case 0xd2: case 0xd3:
-		case 0xd4: case 0xd5: case 0xd6: case 0xd7:
-		case 0xd8: case 0xd9: case 0xda: case 0xdb:
-		case 0xdc: case 0xdd: case 0xde: case 0xdf:
-		case 0xe0: case 0xe1: case 0xe2: case 0xe3:
-		case 0xe4: case 0xe5: case 0xe6: case 0xe7:
-		case 0xe8: case 0xe9: case 0xea: case 0xeb:
-		case 0xec: case 0xed: case 0xee: case 0xef:
-		case 0xf0: case 0xf1: case 0xf2: case 0xf3:
-		case 0xf4: case 0xf5: case 0xf6: case 0xf7:
-		case 0xf8: case 0xf9: case 0xfa: case 0xfb:
-		case 0xfc: case 0xfd: case 0xfe: case 0xff:
-			dlc_w(offset & 0xff, data); break;
-		case 0x4c: port4c_w(data); break;  // 810 Port A Bit-Set (bank select)
-		case 0x50: case 0x51: case 0x52: case 0x53:
-		case 0x54: case 0x55: case 0x56: case 0x57:
-		case 0x58: case 0x59: case 0x5a: case 0x5b:
-		case 0x5c: case 0x5d: case 0x5e: case 0x5f: regs50_w(offset & 0xff, data); break;
-	}
-}
 
 
 // 0x2000-0x3FFF (U206): reads come from ROM 2 (PA6=0) or RAM 2 (PA6=1).
