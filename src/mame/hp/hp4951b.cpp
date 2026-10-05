@@ -323,10 +323,10 @@ uint8_t hp4951b_state::io_r_impl(offs_t offset)
 {
 	switch (offset & 0xff)
 	{
-		// C/S (0x08-0x0F): CRTC MC6845. R/W=A9, RS\=A8.
-		// 0x08: W index, 0x09: W/R data, 0x0A: R index, 0x0B: R status.
-		// 0x0A (read index) not yet implemented; firmware doesn't use it.
-		case 0x0b: return m_crtc->register_r();
+		// C/S (0x08-0x0F): CRTC MC6845. R/W=A9, RS\=A8, A10 don't-care.
+		// 0x08/0x0C: W index, 0x09/0x0D: W data, 0x0A/0x0E: R index, 0x0B/0x0F: R status.
+		// 0x0A/0x0E (read index) not yet implemented; firmware doesn't use it.
+		case 0x0b: case 0x0f: return m_crtc->register_r();
 		case 0x30: case 0x31: case 0x32: case 0x33: return scc_r(offset & 0xff);
 		case 0x34: case 0x35: case 0x36: case 0x37:
 		case 0x39: case 0x3a: case 0x3b:
@@ -358,8 +358,9 @@ void hp4951b_state::io_w(offs_t offset, uint8_t data)
 	// 8-bit ports (decode A7-A0 only)
 	switch (offset & 0xff)
 	{
-		case 0x08: m_crtc->address_w(data); break;
-		case 0x09: m_crtc->register_w(data); break;
+		// C/S: CRTC (A10 don't-care -> mirrors at 0x0C-0x0F)
+		case 0x08: case 0x0c: m_crtc->address_w(data); break;
+		case 0x09: case 0x0d: m_crtc->register_w(data); break;
 		case 0x30: case 0x31: case 0x32: case 0x33: scc_w(offset & 0xff, data); break;
 		case 0x34: case 0x35: case 0x36: case 0x37:
 		case 0x39: case 0x3a: case 0x3b:
