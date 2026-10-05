@@ -437,13 +437,27 @@ void hp4951b_state::bank_w(offs_t offset, uint8_t data)
 
 TIMER_DEVICE_CALLBACK_MEMBER(hp4951b_state::softkey_tick)
 {
-	// SOFTKEY DECODER (Fig 8-31): monitors R1,R5,R6,R7 (KEY1,KEY5,KEY6,KEY7).
+	// SOFTKEY DECODER (Fig 8-31): monitors R1,R5,R6,R7 (rows) for activity
+	// in the currently-selected COLUMN (U401 latch, bit=0 selects).
+	// If no column selected (latch=0xFF), the decoder sees nothing.
 	// Hardware latch: set when softkey active, cleared by PC1 (0x42/0x4A).
+	uint8_t latch = m_kbd_matrix_latch;
+	int sel_col = -1;
+	for (int c = 0; c < 8; c++) {
+		if (!(latch & (1 << c))) {
+			if (sel_col != -1) { sel_col = -2; break; } // Multiple = invalid
+			sel_col = c;
+		}
+	}
+	if (sel_col < 0) {
+		m_softkey_prev = 0;
+		return; // No column (or invalid) -> decoder idle
+	}
 	uint8_t soft = 0;
-	if (ioport("KEY1")->read()) soft |= 0x02;  // R1
-	if (ioport("KEY5")->read()) soft |= 0x20;  // R5
-	if (ioport("KEY6")->read()) soft |= 0x40;  // R6
-	if (ioport("KEY7")->read()) soft |= 0x80;  // R7
+	if (ioport("KEY1")->read() & (1 << sel_col)) soft |= 0x02;  // R1
+	if (ioport("KEY5")->read() & (1 << sel_col)) soft |= 0x20;  // R5
+	if (ioport("KEY6")->read() & (1 << sel_col)) soft |= 0x40;  // R6
+	if (ioport("KEY7")->read() & (1 << sel_col)) soft |= 0x80;  // R7
 
 	// Don't re-trigger while key held: ISR does EI at 0x0F30 before IN A,(41H),
 	// so a held key would nest interrupts → stack overflow. Require release.
