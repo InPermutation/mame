@@ -13,10 +13,17 @@
         PA0/PA4 -> U207: 0x8000 bank (00=RAM U201-U204, 01=10023/U200, 10=10024/U205, 11=U100 RAM)
         PA6     -> U206: 0x2000 M2A (ROM 2/U103/10022) vs M2B (RAM 2/U104)
         PA1/PA2 -> U103: ROM 2 page select (4x 8KB)
-      Port B (0x41): keyboard matrix columns
+      Port B (0x41): keyboard matrix rows (R0-R7, active-low)
       Port C: PC3=buzzer, PC1=RSTB ack
-    Keyboard: 0x18-0x1F (U302 Y3) latch -> R0-R7 rows; RSTB on R1/R5/R6/R7 (softkeys)
-    I/O decode: U302 (A11-A15), byte-backwards (port on A8-A15, MAME abstracts)
+    Keyboard: 0x18-0x1F (U302 Y3) latch -> COLUMNS C0-C7; RSTB on R1/R5/R6/R7 (softkeys)
+    I/O decode:
+      0xC0-0xFF: DLC (Z8530, protocol link)
+      0x40-0x7F: RIOT (NSC810)
+      0x20-0x27: TIC CLOCK
+      0x18-0x1F: KEY BD LATCH (U401)
+      0x10-0x17: POD
+      0x08-0x0F: C/S (0x08/0x09 = CRTC MC6845)
+      0x30-0x37: X6 (SCC? 265 writes in POST)
 
     Memory map (Fig 8-7):
       0x0000: ROM 0 (U101/10021, 8KB)
