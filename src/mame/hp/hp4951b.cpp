@@ -206,17 +206,21 @@ private:
 	// TODO: implement actual column mask from m_kbd_matrix_latch + MAME inputs.
 	uint8_t riot_pb_r() {
 		// 4951B keyboard matrix (Fig 8-31): U401 latch (0x18) drives R0-R7.
-		// For each active row, OR the MAME KEY{row} columns.
+		// Hardware: only one row should be active at a time. If multiple rows
+		// are selected (e.g., latch=0xFF on reset), the result is undefined;
+		// we return 0x00 to avoid confusing the ISR.
 		// Columns are active-high (IP_ACTIVE_HIGH).
-		uint8_t cols = 0x00;
-		for (int row = 0; row < 8; row++) {
-			if (m_kbd_matrix_latch & (1 << row)) {
-				char tag[8];
-				snprintf(tag, sizeof(tag), "KEY%d", row);
-				cols |= ioport(tag)->read();
-			}
+		uint8_t latch = m_kbd_matrix_latch;
+		// Count active rows; if != 1, return 0x00 (invalid)
+		int rows = 0;
+		int sel_row = -1;
+		for (int r = 0; r < 8; r++) {
+			if (latch & (1 << r)) { rows++; sel_row = r; }
 		}
-		return cols;
+		if (rows != 1) return 0x00;
+		char tag[8];
+		snprintf(tag, sizeof(tag), "KEY%d", sel_row);
+		return ioport(tag)->read();
 	}
 	// Helper: check MAME inputs, return scancode (0xFF = no key).
 	// Host-to-emulator bridge: poll MAME input ports (KEY0-KEY8) and return
