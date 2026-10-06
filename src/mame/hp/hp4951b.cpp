@@ -339,19 +339,22 @@ private:
 		}
 	}
 	TIMER_CALLBACK_MEMBER(timer0_tick) {
-		// Timer 0 expired - generate RSTA (tick clock interrupt)
-		// This replaces the old softkey_tick hack
-		do_keyboard_scan();
+		// Timer 0 expired - assert RSTA (tick clock interrupt)
+		// The firmware's RSTA handler does the full keyboard matrix scan
+		m_maincpu->set_input_line(NSC800_RSTA, ASSERT_LINE);
+		// Clear after a short delay (edge-triggered)
+		m_maincpu->set_input_line(NSC800_RSTA, CLEAR_LINE);
 	}
 	TIMER_CALLBACK_MEMBER(timer1_tick) {
-		do_keyboard_scan();
+		m_maincpu->set_input_line(NSC800_RSTA, ASSERT_LINE);
+		m_maincpu->set_input_line(NSC800_RSTA, CLEAR_LINE);
 	}
-	void do_keyboard_scan() {
+	void softkey_poll() {
 		// SOFTKEY DECODER (Fig 8-31): monitors R1,R5,R6,R7 (rows) for activity
 		// in the currently-selected COLUMN (U401 latch, bit=0 selects).
 		// If no column selected (latch=0xFF), the decoder sees nothing.
 		// Hardware latch: set when softkey active, cleared by PC1 (0x42/0x4A).
-		// Called from Timer 0/1 tick (replaces old softkey_tick hack).
+		// Called from 60Hz poll timer (separate from RIOT timer).
 		uint8_t latch = m_kbd_matrix_latch;
 		int sel_col = -1;
 		for (int c = 0; c < 8; c++) {
@@ -550,37 +553,7 @@ void hp4951b_state::bank_w(offs_t offset, uint8_t data)
 
 TIMER_DEVICE_CALLBACK_MEMBER(hp4951b_state::softkey_tick)
 {
-	// SOFTKEY DECODER (Fig 8-31): monitors R1,R5,R6,R7 (rows) for activity
-	// in the currently-selected COLUMN (U401 latch, bit=0 selects).
-	// If no column selected (latch=0xFF), the decoder sees nothing.
-	// Hardware latch: set when softkey active, cleared by PC1 (0x42/0x4A).
-	uint8_t latch = m_kbd_matrix_latch;
-	int sel_col = -1;
-	for (int c = 0; c < 8; c++) {
-		if (!(latch & (1 << c))) {
-			if (sel_col != -1) { sel_col = -2; break; } // Multiple = invalid
-			sel_col = c;
-		}
-	}
-	if (sel_col < 0) {
-		m_softkey_prev = 0;
-		return; // No column (or invalid) -> decoder idle
-	}
-	uint8_t soft = 0;
-	if (ioport("KEY1")->read() & (1 << sel_col)) soft |= 0x02;  // R1
-	if (ioport("KEY5")->read() & (1 << sel_col)) soft |= 0x20;  // R5
-	if (ioport("KEY6")->read() & (1 << sel_col)) soft |= 0x40;  // R6
-	if (ioport("KEY7")->read() & (1 << sel_col)) soft |= 0x80;  // R7
-
-	// Don't re-trigger while key held: ISR does EI at 0x0F30 before IN A,(41H),
-	// so a held key would nest interrupts → stack overflow. Require release.
-	uint8_t rising = soft & ~m_softkey_prev;
-	m_softkey_prev = soft;
-	if (rising && !m_kbd_irq_asserted) {
-		m_kbd_irq_asserted = true;
-		logerror("hp4951b: RSTB ASSERT (softkey), pc=%04x\n", m_maincpu->pc());
-		m_maincpu->set_input_line(NSC800_RSTB, ASSERT_LINE);
-	}
+	softkey_poll();
 }
 
 void hp4951b_state::pager_w(uint8_t data)
