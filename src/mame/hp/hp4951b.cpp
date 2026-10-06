@@ -312,9 +312,9 @@ private:
 			case 0x1: m_timer0_load = (m_timer0_load & 0xff00) | data; break;
 			case 0x2: m_timer1_load = (m_timer1_load & 0xff00) | data; break;
 			case 0x3: m_timer1_load = (m_timer1_load & 0x00ff) | (data << 8); break;
-			case 0x4: m_timer0_running = false; break; // STOP Timer 0
+			case 0x4: m_timer0_running = false; m_timer0->adjust(attotime::never); break; // STOP Timer 0
 			case 0x5: m_timer0_running = true; m_timer0_count = m_timer0_load; start_timer0(); break;
-			case 0x6: m_timer1_running = false; break; // STOP Timer 1
+			case 0x6: m_timer1_running = false; m_timer1->adjust(attotime::never); break; // STOP Timer 1
 			case 0x7: m_timer1_running = true; m_timer1_count = m_timer1_load; start_timer1(); break;
 			case 0x8: m_timer0_mode = data; break;
 			case 0x9: m_timer1_mode = data; break;
@@ -326,14 +326,16 @@ private:
 		if ((m_timer0_mode & 0x07) == 0x05 && m_timer0_running) {
 			// TODO: calculate period from load value and prescale
 			// For now, use 60Hz (matches old softkey_tick)
-			m_timer0 = timer_alloc(FUNC(hp4951b_state::timer0_tick), this);
 			m_timer0->adjust(attotime::from_hz(60), 0, attotime::from_hz(60));
+		} else {
+			m_timer0->adjust(attotime::never);
 		}
 	}
 	void start_timer1() {
 		if ((m_timer1_mode & 0x07) == 0x05 && m_timer1_running) {
-			m_timer1 = timer_alloc(FUNC(hp4951b_state::timer1_tick), this);
 			m_timer1->adjust(attotime::from_hz(60), 0, attotime::from_hz(60));
+		} else {
+			m_timer1->adjust(attotime::never);
 		}
 	}
 	TIMER_CALLBACK_MEMBER(timer0_tick) {
@@ -739,6 +741,10 @@ void hp4951b_state::machine_start()
 {
 	m_bankram = std::make_unique<uint8_t[]>(0x8000);
 	memset(m_bankram.get(), 0, 0x8000);
+
+	// Allocate RIOT timers (must be done here, not at runtime)
+	m_timer0 = timer_alloc(FUNC(hp4951b_state::timer0_tick), this);
+	m_timer1 = timer_alloc(FUNC(hp4951b_state::timer1_tick), this);
 
 	// 0x8000 bank now uses explicit handlers (bank_r/bank_w) with m_bankstate,
 	// not MAME's memory_bank. m_bankstate defaults to 0 (RAM).
