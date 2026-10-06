@@ -284,7 +284,17 @@ private:
 	uint8_t ddr_c_r() { return m_ddr_c; }
 	void ddr_c_w(uint8_t data) { m_ddr_c = data; }
 	uint8_t mdr_r() { return m_mdr; }
-	void mdr_w(uint8_t data) { m_mdr = data; }
+	void mdr_w(uint8_t data) {
+		// MDR mode encoding (not binary):
+		// 0bxxxxxxx0 = MODE 0 (basic I/O)
+		// 0bxxxxxx01 = MODE 1
+		// 0bxxxxx011 = MODE 2
+		// 0bxxxxx111 = MODE 3
+		// We only implement MODE 0. Abort if firmware tries another mode.
+		if (data & 0x01)
+			fatalerror("hp4951b: MDR mode %d not implemented (MDR=0x%02X)\n", (data & 0x07), data);
+		m_mdr = data;
+	}
 	uint8_t timer_r(offs_t offset) {
 		switch (offset & 0xf) {
 			case 0x0: return (m_timer0_count >> 8) & 0xff; // Timer 0 High (current)
