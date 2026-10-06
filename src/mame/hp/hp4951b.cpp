@@ -342,11 +342,13 @@ private:
 	TIMER_CALLBACK_MEMBER(timer0_tick) {
 		// Timer 0 expired - assert RSTA (tick clock interrupt)
 		// The firmware's RSTA handler does the full keyboard matrix scan
+		logerror("hp4951b: RSTA ASSERT (timer0)\n");
 		m_maincpu->set_input_line(NSC800_RSTA, ASSERT_LINE);
 		// Clear after a short delay (edge-triggered)
 		m_maincpu->set_input_line(NSC800_RSTA, CLEAR_LINE);
 	}
 	TIMER_CALLBACK_MEMBER(timer1_tick) {
+		logerror("hp4951b: RSTA ASSERT (timer1)\n");
 		m_maincpu->set_input_line(NSC800_RSTA, ASSERT_LINE);
 		m_maincpu->set_input_line(NSC800_RSTA, CLEAR_LINE);
 	}
