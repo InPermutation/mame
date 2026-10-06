@@ -287,7 +287,8 @@ private:
 	}
 	void tick_w(offs_t offset, uint8_t data) {
 		// OUT (0x20) acks the tick clock AND resets the counters (U404)
-		// Reset = NAND(IOdec#4, RDM\) active-low; OUT strobe triggers it
+		// Reset = NAND(IOdec#4, WRM\) active-low; OUT strobe triggers it
+		// (WRM\ high during I/O, IOdec#4 high when TIC selected)
 		logerror("hp4951b: tick_w 0x20 = 0x%02X (ack + reset)\n", data);
 		m_maincpu->set_input_line(NSC800_RSTA, CLEAR_LINE);
 		m_tick_count = 0;
