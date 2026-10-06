@@ -278,6 +278,33 @@ private:
 		return 0xFF;  // no key pressed
 	}
 	uint8_t ddr_a_r() { return m_ddr_a; }
+	// TIC CLOCK (U404 counter + U304 latch)
+	// 8-bit counter, bits 0-5 latched to U304 (read at 0x20)
+	// Bit 6 -> RSTA via NOR (inverter), fires every 64 counts
+	uint8_t tick_r(offs_t offset) {
+		// Return latched bits 0-5
+		return m_tick_latch & 0x3f;
+	}
+	void tick_w(offs_t offset, uint8_t data) {
+		// OUT (0x20) acks the tick clock (clears RSTA)
+		// The RSTA ISR does OUT (20H),A to ack
+		logerror("hp4951b: tick_w 0x20 = 0x%02X (ack)\n", data);
+		m_maincpu->set_input_line(NSC800_RSTA, CLEAR_LINE);
+		// Latch the current counter bits 0-5 (C1 strobe?)
+		m_tick_latch = m_tick_count;
+	}
+	TIMER_CALLBACK_MEMBER(tick_clock) {
+		// Increment 8-bit counter
+		uint8_t prev = m_tick_count;
+		m_tick_count++;
+		// Check bit 6 rising edge (every 64 counts)
+		if (!(prev & 0x40) && (m_tick_count & 0x40)) {
+			logerror("hp4951b: RSTA ASSERT (tick, count=0x%02X)\n", m_tick_count);
+			m_maincpu->set_input_line(NSC800_RSTA, ASSERT_LINE);
+		}
+		// Latch bits 0-5 continuously (or on C1?)
+		m_tick_latch = m_tick_count;
+	}
 	void ddr_a_w(uint8_t data) { m_ddr_a = data; }
 	uint8_t ddr_b_r() { return m_ddr_b; }
 	void ddr_b_w(uint8_t data) { m_ddr_b = data; }
@@ -340,17 +367,13 @@ private:
 		}
 	}
 	TIMER_CALLBACK_MEMBER(timer0_tick) {
-		// Timer 0 expired - assert RSTA (tick clock interrupt)
-		// The firmware's RSTA handler does the full keyboard matrix scan
-		logerror("hp4951b: RSTA ASSERT (timer0)\n");
-		m_maincpu->set_input_line(NSC800_RSTA, ASSERT_LINE);
-		// Clear after a short delay (edge-triggered)
-		m_maincpu->set_input_line(NSC800_RSTA, CLEAR_LINE);
+		// Timer 0 expired - T0 OUT goes to TIC CLOCK latches (not RSTA)
+		// The TIC CLOCK generates RSTA, not the RIOT timer directly
+		logerror("hp4951b: timer0 tick (T0 OUT -> TIC CLOCK)\n");
+		// TODO: drive TIC CLOCK latch clock (C1) from T0 OUT
 	}
 	TIMER_CALLBACK_MEMBER(timer1_tick) {
-		logerror("hp4951b: RSTA ASSERT (timer1)\n");
-		m_maincpu->set_input_line(NSC800_RSTA, ASSERT_LINE);
-		m_maincpu->set_input_line(NSC800_RSTA, CLEAR_LINE);
+		logerror("hp4951b: timer1 tick\n");
 	}
 	void softkey_poll() {
 		// SOFTKEY DECODER (Fig 8-31): monitors R1,R5,R6,R7 (rows) for activity
@@ -420,6 +443,9 @@ private:
 	uint8_t m_ddr_b = 0;
 	uint8_t m_ddr_c = 0;
 	uint8_t m_mdr = 0;
+	uint8_t m_tick_count = 0;
+	uint8_t m_tick_latch = 0;
+	emu_timer *m_tick_timer = nullptr;
 	uint8_t m_acia_b_data = 0;
 	uint8_t m_acia_a_data = 0;
 	uint8_t m_dlc_a_data = 0;
@@ -479,6 +505,10 @@ void hp4951b_state::io_map(address_map &map)
 	map(0x0030, 0x0033).rw(FUNC(hp4951b_state::acia_r), FUNC(hp4951b_state::acia_w));
 	map(0x0034, 0x0037).rw(FUNC(hp4951b_state::regs30_r), FUNC(hp4951b_state::regs30_w));
 	map(0x0039, 0x003f).rw(FUNC(hp4951b_state::regs30_r), FUNC(hp4951b_state::regs30_w));
+
+	// TIC CLOCK (0x20-0x27): U404 8-bit counter, U304 latch (bits 0-5)
+	// Bit 6 -> RSTA via NOR (fires every 64 counts)
+	map(0x0020, 0x0027).rw(FUNC(hp4951b_state::tick_r), FUNC(hp4951b_state::tick_w));
 
 	// KEY BD LATCH (0x18-0x1F, write-only)
 	map(0x0018, 0x001f).w(FUNC(hp4951b_state::kbd_latch_w));
@@ -721,6 +751,11 @@ void hp4951b_state::machine_start()
 	// Allocate RIOT timers (must be done here, not at runtime)
 	m_timer0 = timer_alloc(FUNC(hp4951b_state::timer0_tick), this);
 	m_timer1 = timer_alloc(FUNC(hp4951b_state::timer1_tick), this);
+
+	// Allocate TIC CLOCK timer: 8-bit counter, RSTA every 64 counts
+	// For 60Hz RSTA, counter ticks at 60*64 = 3840Hz
+	m_tick_timer = timer_alloc(FUNC(hp4951b_state::tick_clock), this);
+	m_tick_timer->adjust(attotime::from_hz(3840), 0, attotime::from_hz(3840));
 
 	// 0x8000 bank now uses explicit handlers (bank_r/bank_w) with m_bankstate,
 	// not MAME's memory_bank. m_bankstate defaults to 0 (RAM).
