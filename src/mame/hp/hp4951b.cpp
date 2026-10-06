@@ -286,12 +286,12 @@ private:
 		return m_tick_latch & 0x3f;
 	}
 	void tick_w(offs_t offset, uint8_t data) {
-		// OUT (0x20) acks the tick clock (clears RSTA)
-		// The RSTA ISR does OUT (20H),A to ack
-		logerror("hp4951b: tick_w 0x20 = 0x%02X (ack)\n", data);
+		// OUT (0x20) acks the tick clock AND resets the counters (U404)
+		// Reset = NAND(IOdec#4, RDM\) active-low; OUT strobe triggers it
+		logerror("hp4951b: tick_w 0x20 = 0x%02X (ack + reset)\n", data);
 		m_maincpu->set_input_line(NSC800_RSTA, CLEAR_LINE);
-		// Latch the current counter bits 0-5 (C1 strobe?)
-		m_tick_latch = m_tick_count;
+		m_tick_count = 0;
+		m_tick_latch = 0;
 	}
 	TIMER_CALLBACK_MEMBER(tick_clock) {
 		// Increment 8-bit counter
