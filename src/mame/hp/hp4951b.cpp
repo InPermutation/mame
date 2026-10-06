@@ -277,8 +277,96 @@ private:
 		}
 		return 0xFF;  // no key pressed
 	}
-	uint8_t regs50_r(offs_t offset) { return m_regs50[offset & 0xf]; }
-	void regs50_w(offs_t offset, uint8_t data) { m_regs50[offset & 0xf] = data; }
+	uint8_t ddr_a_r() { return m_ddr_a; }
+	void ddr_a_w(uint8_t data) { m_ddr_a = data; }
+	uint8_t ddr_b_r() { return m_ddr_b; }
+	void ddr_b_w(uint8_t data) { m_ddr_b = data; }
+	uint8_t ddr_c_r() { return m_ddr_c; }
+	void ddr_c_w(uint8_t data) { m_ddr_c = data; }
+	uint8_t mdr_r() { return m_mdr; }
+	void mdr_w(uint8_t data) { m_mdr = data; }
+	uint8_t timer_r(offs_t offset) {
+		switch (offset & 0xf) {
+			case 0x0: return (m_timer0_count >> 8) & 0xff; // Timer 0 High (current)
+			case 0x1: return m_timer0_count & 0xff;        // Timer 0 Low
+			case 0x2: return m_timer1_count & 0xff;        // Timer 1 Low
+			case 0x3: return (m_timer1_count >> 8) & 0xff; // Timer 1 High
+			case 0x8: return m_timer0_mode;
+			case 0x9: return m_timer1_mode;
+			default: return 0xff;
+		}
+	}
+	void timer_w(offs_t offset, uint8_t data) {
+		switch (offset & 0xf) {
+			case 0x0: m_timer0_load = (m_timer0_load & 0x00ff) | (data << 8); break;
+			case 0x1: m_timer0_load = (m_timer0_load & 0xff00) | data; break;
+			case 0x2: m_timer1_load = (m_timer1_load & 0xff00) | data; break;
+			case 0x3: m_timer1_load = (m_timer1_load & 0x00ff) | (data << 8); break;
+			case 0x4: m_timer0_running = false; break; // STOP Timer 0
+			case 0x5: m_timer0_running = true; m_timer0_count = m_timer0_load; start_timer0(); break;
+			case 0x6: m_timer1_running = false; break; // STOP Timer 1
+			case 0x7: m_timer1_running = true; m_timer1_count = m_timer1_load; start_timer1(); break;
+			case 0x8: m_timer0_mode = data; break;
+			case 0x9: m_timer1_mode = data; break;
+			default: break;
+		}
+	}
+	void start_timer0() {
+		// Square Wave mode (101) = periodic interrupt for keyboard scan
+		if ((m_timer0_mode & 0x07) == 0x05 && m_timer0_running) {
+			// TODO: calculate period from load value and prescale
+			// For now, use 60Hz (matches old softkey_tick)
+			m_timer0 = timer_alloc(FUNC(hp4951b_state::timer0_tick), this);
+			m_timer0->adjust(attotime::from_hz(60), 0, attotime::from_hz(60));
+		}
+	}
+	void start_timer1() {
+		if ((m_timer1_mode & 0x07) == 0x05 && m_timer1_running) {
+			m_timer1 = timer_alloc(FUNC(hp4951b_state::timer1_tick), this);
+			m_timer1->adjust(attotime::from_hz(60), 0, attotime::from_hz(60));
+		}
+	}
+	TIMER_CALLBACK_MEMBER(timer0_tick) {
+		// Timer 0 expired - generate RSTA (tick clock interrupt)
+		// This replaces the old softkey_tick hack
+		do_keyboard_scan();
+	}
+	TIMER_CALLBACK_MEMBER(timer1_tick) {
+		do_keyboard_scan();
+	}
+	void do_keyboard_scan() {
+		// SOFTKEY DECODER (Fig 8-31): monitors R1,R5,R6,R7 (rows) for activity
+		// in the currently-selected COLUMN (U401 latch, bit=0 selects).
+		// If no column selected (latch=0xFF), the decoder sees nothing.
+		// Hardware latch: set when softkey active, cleared by PC1 (0x42/0x4A).
+		// Called from Timer 0/1 tick (replaces old softkey_tick hack).
+		uint8_t latch = m_kbd_matrix_latch;
+		int sel_col = -1;
+		for (int c = 0; c < 8; c++) {
+			if (!(latch & (1 << c))) {
+				if (sel_col != -1) { sel_col = -2; break; } // Multiple = invalid
+				sel_col = c;
+			}
+		}
+		if (sel_col < 0) {
+			m_softkey_prev = 0;
+			return; // No column (or invalid) -> decoder idle
+		}
+		uint8_t soft = 0;
+		if (ioport("KEY1")->read() & (1 << sel_col)) soft |= 0x02;  // R1
+		if (ioport("KEY5")->read() & (1 << sel_col)) soft |= 0x20;  // R5
+		if (ioport("KEY6")->read() & (1 << sel_col)) soft |= 0x40;  // R6
+		if (ioport("KEY7")->read() & (1 << sel_col)) soft |= 0x80;  // R7
+		// Don't re-trigger while key held: ISR does EI at 0x0F30 before IN A,(41H),
+		// so a held key would nest interrupts → stack overflow. Require release.
+		uint8_t rising = soft & ~m_softkey_prev;
+		m_softkey_prev = soft;
+		if (rising && !m_kbd_irq_asserted) {
+			m_kbd_irq_asserted = true;
+			logerror("hp4951b: RSTB ASSERT (softkey), pc=%04x\n", m_maincpu->pc());
+			m_maincpu->set_input_line(NSC800_RSTB, ASSERT_LINE);
+		}
+	}
 
 	MC6845_UPDATE_ROW(crtc_update_row);
 
@@ -300,7 +388,20 @@ private:
 	std::unique_ptr<uint8_t[]> m_bankram;
 	std::unique_ptr<uint8_t[]> m_winram;
 	uint8_t m_regs30[16] = { 0 };
-	uint8_t m_regs50[16] = { 0 };
+	uint16_t m_timer0_load = 0;
+	uint16_t m_timer1_load = 0;
+	uint16_t m_timer0_count = 0;
+	uint16_t m_timer1_count = 0;
+	uint8_t m_timer0_mode = 0;
+	uint8_t m_timer1_mode = 0;
+	bool m_timer0_running = false;
+	bool m_timer1_running = false;
+	emu_timer *m_timer0 = nullptr;
+	emu_timer *m_timer1 = nullptr;
+	uint8_t m_ddr_a = 0;
+	uint8_t m_ddr_b = 0;
+	uint8_t m_ddr_c = 0;
+	uint8_t m_mdr = 0;
 	uint8_t m_acia_b_data = 0;
 	uint8_t m_acia_a_data = 0;
 	uint8_t m_dlc_a_data = 0;
@@ -350,7 +451,11 @@ void hp4951b_state::io_map(address_map &map)
 	map(0x004a, 0x004a).w(FUNC(hp4951b_state::port4a_w)); // Port C bit-clear
 	map(0x004c, 0x004c).w(FUNC(hp4951b_state::port4c_w)); // Port A bit-set
 	map(0x004e, 0x004e).w(FUNC(hp4951b_state::port4e_w)); // Port C bit-set
-	map(0x0050, 0x005f).rw(FUNC(hp4951b_state::regs50_r), FUNC(hp4951b_state::regs50_w));
+	map(0x0044, 0x0044).rw(FUNC(hp4951b_state::ddr_a_r), FUNC(hp4951b_state::ddr_a_w));
+	map(0x0045, 0x0045).rw(FUNC(hp4951b_state::ddr_b_r), FUNC(hp4951b_state::ddr_b_w));
+	map(0x0046, 0x0046).rw(FUNC(hp4951b_state::ddr_c_r), FUNC(hp4951b_state::ddr_c_w));
+	map(0x0047, 0x0047).rw(FUNC(hp4951b_state::mdr_r), FUNC(hp4951b_state::mdr_w));
+	map(0x0050, 0x0059).rw(FUNC(hp4951b_state::timer_r), FUNC(hp4951b_state::timer_w));
 
 	// X6 ACIA (0x30-0x37)
 	map(0x0030, 0x0033).rw(FUNC(hp4951b_state::acia_r), FUNC(hp4951b_state::acia_w));
