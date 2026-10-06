@@ -307,6 +307,7 @@ private:
 		}
 	}
 	void timer_w(offs_t offset, uint8_t data) {
+		logerror("hp4951b: timer_w 0x%02X = 0x%02X\n", 0x50 | (offset & 0xf), data);
 		switch (offset & 0xf) {
 			case 0x0: m_timer0_load = (m_timer0_load & 0x00ff) | (data << 8); break;
 			case 0x1: m_timer0_load = (m_timer0_load & 0xff00) | data; break;
@@ -437,7 +438,7 @@ void hp4951b_state::mem_map(address_map &map)
 
 
 
-void hp4951b_state::kbd_latch_w(uint8_t data) { m_kbd_matrix_latch = data; }
+void hp4951b_state::kbd_latch_w(uint8_t data) { logerror("hp4951b: kbd_latch_w 0x18 = 0x%02X\n", data); m_kbd_matrix_latch = data; }
 void hp4951b_state::crtc_address_w(uint8_t data) { m_crtc->address_w(data); }
 void hp4951b_state::crtc_register_w(uint8_t data) { m_crtc->register_w(data); }
 uint8_t hp4951b_state::crtc_register_r() { return m_crtc->register_r(); }
