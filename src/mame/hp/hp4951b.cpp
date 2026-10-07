@@ -305,26 +305,6 @@ private:
 		m_tick_latch = m_tick_count & 0x3f; // Latch bits 0-5 before reset
 		m_tick_count = 0;
 	}
-	TIMER_CALLBACK_MEMBER(tick_clock) {
-		// Increment 8-bit counter (U404 free-runs)
-		uint8_t prev = m_tick_count;
-		m_tick_count++;
-		// Check bit 6 rising edge (every 64 counts) -> RSTA via NOR
-		if (!(prev & 0x40) && (m_tick_count & 0x40)) {
-			// Firmware races: (0x7585) vector may be zero (not installed) or
-			// hold POST RAM-test patterns (0xA555/0x5AAA). In either case the
-			// ISR trampoline would jump to garbage and reboot. Only assert RSTA
-			// when the vector holds the known handler (0x015B).
-			uint16_t vec = m_mainram[0x7585-0x4000] | (m_mainram[0x7586-0x4000] << 8);
-			if (vec == 0x015b) {
-				logerror("hp4951b: RSTA ASSERT (tick, count=0x%02X)\n", m_tick_count);
-				m_maincpu->set_input_line(NSC800_RSTA, ASSERT_LINE);
-			}
-		}
-		// Note: m_tick_latch does NOT update here.
-		// U503 holds the latch steady until CPU acks (OUT 0x20),
-		// which strobes U304 to capture the current count.
-	}
 	void ddr_a_w(uint8_t data) {
 		// Firmware uses Port A as all outputs. Abort on anything else.
 		if (data != 0xff)
@@ -390,9 +370,10 @@ private:
 		if ((m_timer0_mode & 0x07) != 0x05)
 			fatalerror("hp4951b: timer0 mode bits 0x%02X not implemented (expected 0x05)\n", m_timer0_mode & 0x07);
 		if (m_timer0_running) {
-			// TODO: calculate period from load value and prescale
-			// For now, use 60Hz (matches old softkey_tick)
-			m_timer0->adjust(attotime::from_hz(60), 0, attotime::from_hz(60));
+			// T0 OUT clocks the U404 TIC CLOCK counter. For 60Hz RSTA
+			// (every 64 counts), T0 OUT runs at 60*64 = 3840Hz.
+			// TODO: calculate from load value and prescale
+			m_timer0->adjust(attotime::from_hz(3840), 0, attotime::from_hz(3840));
 		}
 	}
 	void start_timer1() {
@@ -404,9 +385,22 @@ private:
 		}
 	}
 	TIMER_CALLBACK_MEMBER(timer0_tick) {
-		// Timer 0 expired - T0 OUT goes to TIC CLOCK latches (not RSTA)
-		// The TIC CLOCK generates RSTA, not the RIOT timer directly
-		logerror("hp4951b: timer0 tick (T0 OUT -> TIC CLOCK)\n");
+		// T0 OUT clocks the U404 TIC CLOCK counter (one count per T0 OUT).
+		// Bit 6 rising (every 64 counts) -> RSTA via NOR.
+		uint8_t prev = m_tick_count;
+		m_tick_count++;
+		if (!(prev & 0x40) && (m_tick_count & 0x40)) {
+			// Only assert when the (0x7585) vector holds the installed handler.
+			// During POST it can be zero or RAM-test patterns; the ISR would
+			// trampoline to garbage and reboot.
+			uint16_t vec = m_mainram[0x7585-0x4000] | (m_mainram[0x7586-0x4000] << 8);
+			if (vec == 0x015b) {
+				logerror("hp4951b: RSTA ASSERT (tick, count=0x%02X)\n", m_tick_count);
+				m_maincpu->set_input_line(NSC800_RSTA, ASSERT_LINE);
+			}
+		}
+		// Note: m_tick_latch does NOT update here. U503 holds the latch steady
+		// until CPU acks (OUT 0x20), which strobes U304 to capture the count.
 	}
 	TIMER_CALLBACK_MEMBER(timer1_tick) {
 		// Timer 1 OUT -> U503 R\ (active-low) -> Q=0 -> RSTC\=0 (active)
@@ -485,7 +479,6 @@ private:
 	uint8_t m_mdr = 0;
 	uint8_t m_tick_count = 0;
 	uint8_t m_tick_latch = 0;
-	emu_timer *m_tick_timer = nullptr;
 	uint8_t m_acia_b_data = 0;
 	uint8_t m_acia_a_data = 0;
 	uint8_t m_dlc_a_data = 0;
@@ -797,11 +790,6 @@ void hp4951b_state::machine_start()
 	// Allocate RIOT timers (must be done here, not at runtime)
 	m_timer0 = timer_alloc(FUNC(hp4951b_state::timer0_tick), this);
 	m_timer1 = timer_alloc(FUNC(hp4951b_state::timer1_tick), this);
-
-	// Allocate TIC CLOCK timer: 8-bit counter, RSTA every 64 counts
-	// For 60Hz RSTA, counter ticks at 60*64 = 3840Hz
-	m_tick_timer = timer_alloc(FUNC(hp4951b_state::tick_clock), this);
-	m_tick_timer->adjust(attotime::from_hz(3840), 0, attotime::from_hz(3840));
 
 	// 0x8000 bank now uses explicit handlers (bank_r/bank_w) with m_bankstate,
 	// not MAME's memory_bank. m_bankstate defaults to 0 (RAM).
