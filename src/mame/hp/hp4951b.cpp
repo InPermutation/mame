@@ -278,6 +278,17 @@ private:
 		return 0xFF;  // no key pressed
 	}
 	uint8_t ddr_a_r() { return m_ddr_a; }
+	// POD (0x10-0x17) stub
+	uint8_t pod_r(offs_t offset) {
+		logerror("hp4951b: pod_r 0x%02X\n", 0x10 | (offset & 0x7));
+		return 0x00; // Ready (not 0xFF)
+	}
+	void pod_w(offs_t offset, uint8_t data) {
+		logerror("hp4951b: pod_w 0x%02X = 0x%02X\n", 0x10 | (offset & 0x7), data);
+	}
+	// 0xBB unknown stub
+	uint8_t unkbb_r() { logerror("hp4951b: unkbb_r\n"); return 0xff; }
+	void unkbb_w(uint8_t data) { logerror("hp4951b: unkbb_w = 0x%02X\n", data); }
 	// TIC CLOCK (U404 counter + U304 latch)
 	// 8-bit counter, bits 0-5 latched to U304 (read at 0x20)
 	// Bit 6 -> RSTA via NOR (inverter), fires every 64 counts
@@ -492,6 +503,12 @@ void hp4951b_state::io_map(address_map &map)
 
 	// DLC (0xC0-0xFF)
 	map(0x00c0, 0x00ff).rw(FUNC(hp4951b_state::dlc_r), FUNC(hp4951b_state::dlc_w));
+
+	// POD (0x10-0x17): POD latches (stub - return 0x00 = ready)
+	map(0x0010, 0x0017).rw(FUNC(hp4951b_state::pod_r), FUNC(hp4951b_state::pod_w));
+
+	// 0xBB: unknown (in 0x80-0xBF range) - stub
+	map(0x00bb, 0x00bb).rw(FUNC(hp4951b_state::unkbb_r), FUNC(hp4951b_state::unkbb_w));
 
 	// RIOT (0x40-0x7F) - specific registers
 	map(0x0040, 0x0040).w(FUNC(hp4951b_state::port40_w)); // Port A Data
