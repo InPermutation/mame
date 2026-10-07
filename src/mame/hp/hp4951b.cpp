@@ -259,6 +259,7 @@ private:
 				portb |= (1 << r); // Row goes high (active-high)
 			}
 		}
+		if (portb != 0x00) logerror("hp4951b: PortB read col_bit=%d -> 0x%02X, pc=%04x\n", sel_col, portb, m_maincpu->pc());
 		return portb;
 	}
 	// Helper: check MAME inputs, return scancode (0xFF = no key).
