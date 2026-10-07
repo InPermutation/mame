@@ -387,17 +387,13 @@ private:
 	TIMER_CALLBACK_MEMBER(timer0_tick) {
 		// T0 OUT clocks the U404 TIC CLOCK counter (one count per T0 OUT).
 		// Bit 6 rising (every 64 counts) -> RSTA via NOR.
+		// U404 only advances while Timer 0 runs, so RSTA cannot fire before
+		// the firmware starts Timer 0 (after the vector is installed).
 		uint8_t prev = m_tick_count;
 		m_tick_count++;
 		if (!(prev & 0x40) && (m_tick_count & 0x40)) {
-			// Only assert when the (0x7585) vector holds the installed handler.
-			// During POST it can be zero or RAM-test patterns; the ISR would
-			// trampoline to garbage and reboot.
-			uint16_t vec = m_mainram[0x7585-0x4000] | (m_mainram[0x7586-0x4000] << 8);
-			if (vec == 0x015b) {
-				logerror("hp4951b: RSTA ASSERT (tick, count=0x%02X)\n", m_tick_count);
-				m_maincpu->set_input_line(NSC800_RSTA, ASSERT_LINE);
-			}
+			logerror("hp4951b: RSTA ASSERT (tick, count=0x%02X)\n", m_tick_count);
+			m_maincpu->set_input_line(NSC800_RSTA, ASSERT_LINE);
 		}
 		// Note: m_tick_latch does NOT update here. U503 holds the latch steady
 		// until CPU acks (OUT 0x20), which strobes U304 to capture the count.
