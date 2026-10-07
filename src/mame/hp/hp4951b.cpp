@@ -246,12 +246,17 @@ private:
 		}
 		if (sel_col == -1) return 0x00; // None selected
 		// Build Port B: for each row R, check key at (R, sel_col).
-		// MAME KEY{R} has bit (1<<C) for the key at (R,C). ACTIVE_HIGH.
+		// Firmware bit B selects keyboard column (B+1) (Fig 8-31).
+		// MAME KEY{R} has bit (1<<(7-C)) for keyboard column (C+1);
+		// the MAME map lists keys left-to-right (EXIT@bit0 ... MORE@bit7),
+		// but the hardware has EXIT in column 8 and MORE in column 1.
+		// MAME KEY{R} bits are ACTIVE_HIGH.
 		uint8_t portb = 0x00;
+		int mame_bit = 1 << (7 - sel_col);
 		for (int r = 0; r < 8; r++) {
 			char tag[8];
 			snprintf(tag, sizeof(tag), "KEY%d", r);
-			if (ioport(tag)->read() & (1 << sel_col)) {
+			if (ioport(tag)->read() & mame_bit) {
 				portb |= (1 << r); // Row goes high (active-high)
 			}
 		}
@@ -475,11 +480,13 @@ void hp4951b_state::kbd_latch_w(uint8_t data) {
 		}
 	}
 	if (sel_col < 0) return; // No column -> decoder idle
+	// Firmware bit B = keyboard column (B+1); MAME bit is reversed (7-B).
+	int mame_bit = 1 << (7 - sel_col);
 	bool soft = false;
-	if (ioport("KEY1")->read() & (1 << sel_col)) soft = true;  // R1
-	if (ioport("KEY5")->read() & (1 << sel_col)) soft = true;  // R5
-	if (ioport("KEY6")->read() & (1 << sel_col)) soft = true;  // R6
-	if (ioport("KEY7")->read() & (1 << sel_col)) soft = true;  // R7
+	if (ioport("KEY1")->read() & mame_bit) soft = true;  // R1
+	if (ioport("KEY5")->read() & mame_bit) soft = true;  // R5
+	if (ioport("KEY6")->read() & mame_bit) soft = true;  // R6
+	if (ioport("KEY7")->read() & mame_bit) soft = true;  // R7
 	if (soft && !m_kbd_irq_asserted && (m_portc & 0x02)) {
 		// PC1 high = R\ inactive, latch can set. If PC1 is low, R\ holds
 		// the latch in reset and the decoder cannot fire.
