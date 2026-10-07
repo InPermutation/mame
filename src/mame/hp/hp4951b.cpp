@@ -81,7 +81,6 @@ private:
 	void win_w(offs_t offset, uint8_t data);
 	uint8_t bank_r(offs_t offset);
 	void bank_w(offs_t offset, uint8_t data);
-	TIMER_DEVICE_CALLBACK_MEMBER(softkey_tick);
 	uint8_t m_portc = 0x00;  // 810 Port C output latch (PC3 = buzzer)
 	uint8_t m_porta = 0x00;  // 810 Port A output latch (PA0/PA4 = 0x8000 bank, PA1/PA2 = 0x2000 window)
 	void portc_update() {
@@ -225,7 +224,6 @@ private:
 	}
 	uint8_t m_kbd_matrix_latch = 0x00;  // U401 (74HC374) column latch (0x18); CPU bit=1 selects column
 	bool m_kbd_irq_asserted = false;  // RSTB latch (set by SOFTKEY DECODER, cleared by PC1)
-	uint8_t m_softkey_prev = 0x00;  // Prev softkey rows (prevent re-trigger on hold; ISR does EI before Port B read)
 	// RIOT Port B (0x41): keyboard matrix sense inputs.
 	// Returns 0x00 always for now (ISR handles gracefully).
 	// TODO: implement actual column mask from m_kbd_matrix_latch + MAME inputs.
@@ -405,40 +403,6 @@ private:
 		m_maincpu->set_input_line(NSC800_RSTC, ASSERT_LINE);
 		m_maincpu->set_input_line(NSC800_RSTC, CLEAR_LINE);
 	}
-	void softkey_poll() {
-		// SOFTKEY DECODER (Fig 8-31): monitors R1,R5,R6,R7 (rows) for activity
-		// in the currently-selected COLUMN (U401 latch at 0x18, bit=1 selects).
-		// If no column selected (latch=0x00), the decoder sees nothing.
-		// Hardware latch: set when softkey active, cleared by PC1 (0x42/0x4A).
-		// Called from 60Hz poll timer (separate from RIOT timer).
-		uint8_t latch = m_kbd_matrix_latch;
-		int sel_col = -1;
-		for (int c = 0; c < 8; c++) {
-			if (latch & (1 << c)) {
-				if (sel_col != -1) { sel_col = -2; break; } // Multiple = invalid
-				sel_col = c;
-			}
-		}
-		if (sel_col < 0) {
-			m_softkey_prev = 0;
-			return; // No column (or invalid) -> decoder idle
-		}
-		uint8_t soft = 0;
-		if (ioport("KEY1")->read() & (1 << sel_col)) soft |= 0x02;  // R1
-		if (ioport("KEY5")->read() & (1 << sel_col)) soft |= 0x20;  // R5
-		if (ioport("KEY6")->read() & (1 << sel_col)) soft |= 0x40;  // R6
-		if (ioport("KEY7")->read() & (1 << sel_col)) soft |= 0x80;  // R7
-		// Don't re-trigger while key held: ISR does EI at 0x0F30 before IN A,(41H),
-		// so a held key would nest interrupts → stack overflow. Require release.
-		uint8_t rising = soft & ~m_softkey_prev;
-		m_softkey_prev = soft;
-		if (rising && !m_kbd_irq_asserted) {
-			m_kbd_irq_asserted = true;
-			logerror("hp4951b: RSTB ASSERT (softkey), pc=%04x\n", m_maincpu->pc());
-			m_maincpu->set_input_line(NSC800_RSTB, ASSERT_LINE);
-		}
-	}
-
 	MC6845_UPDATE_ROW(crtc_update_row);
 
 	required_device<nsc800_device> m_maincpu;
@@ -495,7 +459,32 @@ void hp4951b_state::mem_map(address_map &map)
 
 
 
-void hp4951b_state::kbd_latch_w(uint8_t data) { logerror("hp4951b: kbd_latch_w 0x18 = 0x%02X\n", data); m_kbd_matrix_latch = data; }
+void hp4951b_state::kbd_latch_w(uint8_t data) {
+	logerror("hp4951b: kbd_latch_w 0x18 = 0x%02X\n", data);
+	m_kbd_matrix_latch = data;
+	// SOFTKEY DECODER (Fig 8-31, combinational): monitors R1,R5,R6,R7 for
+	// activity in the selected column. Fires when the RSTA scan (or any
+	// 0x18 write) selects a column with a pressed softkey. The hardware
+	// latch holds RSTB until the firmware clears it via PC1.
+	int sel_col = -1;
+	for (int c = 0; c < 8; c++) {
+		if (data & (1 << c)) {
+			if (sel_col != -1) return; // Multiple = invalid, decoder idle
+			sel_col = c;
+		}
+	}
+	if (sel_col < 0) return; // No column -> decoder idle
+	bool soft = false;
+	if (ioport("KEY1")->read() & (1 << sel_col)) soft = true;  // R1
+	if (ioport("KEY5")->read() & (1 << sel_col)) soft = true;  // R5
+	if (ioport("KEY6")->read() & (1 << sel_col)) soft = true;  // R6
+	if (ioport("KEY7")->read() & (1 << sel_col)) soft = true;  // R7
+	if (soft && !m_kbd_irq_asserted) {
+		m_kbd_irq_asserted = true;
+		logerror("hp4951b: RSTB ASSERT (softkey decoder), pc=%04x\n", m_maincpu->pc());
+		m_maincpu->set_input_line(NSC800_RSTB, ASSERT_LINE);
+	}
+}
 void hp4951b_state::crtc_address_w(uint8_t data) { m_crtc->address_w(data); }
 void hp4951b_state::crtc_register_w(uint8_t data) { m_crtc->register_w(data); }
 uint8_t hp4951b_state::crtc_register_r() { return m_crtc->register_r(); }
@@ -617,11 +606,6 @@ void hp4951b_state::bank_w(offs_t offset, uint8_t data)
 	// Behavior when a ROM bank is selected is unverified; we preserve
 	// RAM contents (hardware may ignore the write).
 	m_bankram[offset] = data;
-}
-
-TIMER_DEVICE_CALLBACK_MEMBER(hp4951b_state::softkey_tick)
-{
-	softkey_poll();
 }
 
 void hp4951b_state::pager_w(uint8_t data)
@@ -933,10 +917,6 @@ void hp4951b_state::hp4951b(machine_config &config)
 	m_crtc->set_show_border_area(false);
 	m_crtc->set_char_width(8);
 	m_crtc->set_update_row_callback(FUNC(hp4951b_state::crtc_update_row));
-
-	// SOFTKEY DECODER: RSTB on R1/R5/R6/R7 key press (edge-triggered).
-	// Polls at 60Hz for MAME input edges; hardware is combinational.
-	TIMER(config, "softkey").configure_periodic(FUNC(hp4951b_state::softkey_tick), attotime::from_hz(60));
 }
 
 
