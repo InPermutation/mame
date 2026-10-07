@@ -288,23 +288,24 @@ private:
 	void tick_w(offs_t offset, uint8_t data) {
 		// OUT (0x20) acks the tick clock AND resets the counters (U404)
 		// Reset = NAND(IOdec#4, WRM\) active-low; OUT strobe triggers it
-		// (WRM\ high during I/O, IOdec#4 high when TIC selected)
-		logerror("hp4951b: tick_w 0x20 = 0x%02X (ack + reset)\n", data);
+		// U503 strobes U304 to latch the count BEFORE reset (double-buffered)
+		logerror("hp4951b: tick_w 0x20 = 0x%02X (ack + latch + reset)\n", data);
 		m_maincpu->set_input_line(NSC800_RSTA, CLEAR_LINE);
+		m_tick_latch = m_tick_count & 0x3f; // Latch bits 0-5 before reset
 		m_tick_count = 0;
-		m_tick_latch = 0;
 	}
 	TIMER_CALLBACK_MEMBER(tick_clock) {
-		// Increment 8-bit counter
+		// Increment 8-bit counter (U404 free-runs)
 		uint8_t prev = m_tick_count;
 		m_tick_count++;
-		// Check bit 6 rising edge (every 64 counts)
+		// Check bit 6 rising edge (every 64 counts) -> RSTA via NOR
 		if (!(prev & 0x40) && (m_tick_count & 0x40)) {
 			logerror("hp4951b: RSTA ASSERT (tick, count=0x%02X)\n", m_tick_count);
 			m_maincpu->set_input_line(NSC800_RSTA, ASSERT_LINE);
 		}
-		// Latch bits 0-5 continuously (or on C1?)
-		m_tick_latch = m_tick_count;
+		// Note: m_tick_latch does NOT update here.
+		// U503 holds the latch steady until CPU acks (OUT 0x20),
+		// which strobes U304 to capture the current count.
 	}
 	void ddr_a_w(uint8_t data) { m_ddr_a = data; }
 	uint8_t ddr_b_r() { return m_ddr_b; }
