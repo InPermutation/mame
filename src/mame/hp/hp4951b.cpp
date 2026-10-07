@@ -375,7 +375,10 @@ private:
 		// TODO: drive TIC CLOCK latch clock (C1) from T0 OUT
 	}
 	TIMER_CALLBACK_MEMBER(timer1_tick) {
-		logerror("hp4951b: timer1 tick\n");
+		// Timer 1 OUT -> RSTC (tape interrupt)
+		logerror("hp4951b: RSTC ASSERT (timer1 T1 OUT)\n");
+		m_maincpu->set_input_line(NSC800_RSTC, ASSERT_LINE);
+		m_maincpu->set_input_line(NSC800_RSTC, CLEAR_LINE);
 	}
 	void softkey_poll() {
 		// SOFTKEY DECODER (Fig 8-31): monitors R1,R5,R6,R7 (rows) for activity
