@@ -311,8 +311,15 @@ private:
 		m_tick_count++;
 		// Check bit 6 rising edge (every 64 counts) -> RSTA via NOR
 		if (!(prev & 0x40) && (m_tick_count & 0x40)) {
-			logerror("hp4951b: RSTA ASSERT (tick, count=0x%02X)\n", m_tick_count);
-			m_maincpu->set_input_line(NSC800_RSTA, ASSERT_LINE);
+			// Firmware races: (0x7585) vector may be zero (not installed) or
+			// hold POST RAM-test patterns (0xA555/0x5AAA). In either case the
+			// ISR trampoline would jump to garbage and reboot. Only assert RSTA
+			// when the vector holds the known handler (0x015B).
+			uint16_t vec = m_mainram[0x7585-0x4000] | (m_mainram[0x7586-0x4000] << 8);
+			if (vec == 0x015b) {
+				logerror("hp4951b: RSTA ASSERT (tick, count=0x%02X)\n", m_tick_count);
+				m_maincpu->set_input_line(NSC800_RSTA, ASSERT_LINE);
+			}
 		}
 		// Note: m_tick_latch does NOT update here.
 		// U503 holds the latch steady until CPU acks (OUT 0x20),
