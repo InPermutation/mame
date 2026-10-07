@@ -230,28 +230,29 @@ private:
 	uint8_t riot_pb_r() {
 		// 4951B keyboard matrix (Fig 8-31):
 		//   U401 (MC74HC374N, non-inverting) latch at 0x18 drives COLUMNS C0-C7.
-		//   CPU writes bit=1 to select a column (firmware uses one-hot).
-		//   ROWS R0-R7 go to RIOT Port B (PB0-PB7).
-		//   Key at (R,C) pulls the row active when its column is selected.
-		//   Latch=0x00 (reset) = no columns selected -> 0xFF (all rows idle).
+		//   CPU writes bit=1 to select a column (firmware uses one-hot-high).
+		//   ROWS R0-R7 go to RIOT Port B (PB0-PB7), pulled LOW.
+		//   Key at (R,C) pulls the row HIGH when its column is driven high.
+		//   Port B is ACTIVE-HIGH (1 = key pressed).
+		//   Latch=0x00 (reset) = no columns selected -> 0x00 (all rows low).
 		uint8_t latch = m_kbd_matrix_latch;
 		// Find selected column (bit HIGH in CPU value). Must be exactly one.
 		int sel_col = -1;
 		for (int c = 0; c < 8; c++) {
 			if (latch & (1 << c)) {
-				if (sel_col != -1) return 0xFF; // Multiple = invalid
+				if (sel_col != -1) return 0x00; // Multiple = invalid
 				sel_col = c;
 			}
 		}
-		if (sel_col == -1) return 0xFF; // None selected
+		if (sel_col == -1) return 0x00; // None selected
 		// Build Port B: for each row R, check key at (R, sel_col).
 		// MAME KEY{R} has bit (1<<C) for the key at (R,C). ACTIVE_HIGH.
-		uint8_t portb = 0xFF;
+		uint8_t portb = 0x00;
 		for (int r = 0; r < 8; r++) {
 			char tag[8];
 			snprintf(tag, sizeof(tag), "KEY%d", r);
 			if (ioport(tag)->read() & (1 << sel_col)) {
-				portb &= ~(1 << r); // Row goes low (active-low)
+				portb |= (1 << r); // Row goes high (active-high)
 			}
 		}
 		return portb;
