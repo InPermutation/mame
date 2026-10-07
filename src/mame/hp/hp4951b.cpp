@@ -480,7 +480,13 @@ void hp4951b_state::kbd_latch_w(uint8_t data) {
 		// PC1 high = R\ inactive, latch can set. If PC1 is low, R\ holds
 		// the latch in reset and the decoder cannot fire.
 		m_kbd_irq_asserted = true;
-		logerror("hp4951b: RSTB ASSERT (softkey decoder), pc=%04x\n", m_maincpu->pc());
+		// Log the RSTB ISR RAM vectors: (0x77FE) is the indirect call target,
+		// (0x75A9) is the bit6 row handler vector. If either is uninitialized
+		// (0x0000 or POST pattern), the ISR will jump to garbage.
+		uint16_t vec77fe = m_maincpu->space(AS_PROGRAM).read_word(0x77fe);
+		uint16_t vec75a9 = m_maincpu->space(AS_PROGRAM).read_word(0x75a9);
+		logerror("hp4951b: RSTB ASSERT (softkey decoder), pc=%04x vec77fe=%04x vec75a9=%04x\n",
+			m_maincpu->pc(), vec77fe, vec75a9);
 		m_maincpu->set_input_line(NSC800_RSTB, ASSERT_LINE);
 	}
 }
