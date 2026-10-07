@@ -228,32 +228,38 @@ private:
 	// Returns 0x00 always for now (ISR handles gracefully).
 	// TODO: implement actual column mask from m_kbd_matrix_latch + MAME inputs.
 	uint8_t riot_pb_r() {
-		// 4951B keyboard matrix (Fig 8-31), TRANSPOSED from schematic labels:
-		//   U401 (MC74HC374N) latch at 0x18 drives the 8 horizontal lines.
-		//   CPU writes bit=1 (one-hot) to select a ROW.
-		//   The 8 vertical lines go to RIOT Port B (PB0-PB7), pulled LOW.
-		//   Key at (row,col) pulls the column line HIGH when its row is driven.
-		//   Port B is ACTIVE-HIGH (1 = key pressed in that column).
-		//   Latch=0x00 (reset) = no row selected -> 0x00.
-		//   MAME KEY{R} = schematic row R (R0=bottom/X-Z, R7=top/EXIT);
-		//   bit C = column C from left (bit0=leftmost/EXIT-col).
+		// 4951B keyboard matrix (Fig 8-31):
+		//   U401 (MC74HC374N, non-inverting) latch at 0x18 drives COLUMNS C0-C7.
+		//   CPU writes bit=1 to select a column (firmware uses one-hot-high).
+		//   ROWS R0-R7 go to RIOT Port B (PB0-PB7), pulled LOW.
+		//   Key at (R,C) pulls the row HIGH when its column is driven high.
+		//   Port B is ACTIVE-HIGH (1 = key pressed).
+		//   Latch=0x00 (reset) = no columns selected -> 0x00 (all rows low).
 		uint8_t latch = m_kbd_matrix_latch;
-		int sel_row = -1;
-		for (int b = 0; b < 8; b++) {
-			if (latch & (1 << b)) {
-				if (sel_row != -1) return 0x00;
-				sel_row = b;
+		// Find selected column (bit HIGH in CPU value). Must be exactly one.
+		int sel_col = -1;
+		for (int c = 0; c < 8; c++) {
+			if (latch & (1 << c)) {
+				if (sel_col != -1) return 0x00; // Multiple = invalid
+				sel_col = c;
 			}
 		}
-		if (sel_row == -1) return 0x00;
-		// Map firmware select bit to MAME row: bit0 = top row (EXIT, R7).
-		int mame_row = 7 - sel_row;
-		char tag[8];
-		snprintf(tag, sizeof(tag), "KEY%d", mame_row);
-		uint8_t rowbits = ioport(tag)->read();
-		// Port B bit C = column C pressed (active-high). Bits left-to-right.
-		uint8_t portb = rowbits; // MAME bits already map bit=column
-		if (portb != 0x00) logerror("hp4951b: PortB read row_bit=%d (R%d) -> 0x%02X, pc=%04x\n", sel_row, mame_row, portb, m_maincpu->pc());
+		if (sel_col == -1) return 0x00; // None selected
+		// Build Port B: for each row R, check key at (R, sel_col).
+		// Firmware bit B selects keyboard column (8-B) (Fig 8-31):
+		// bit0 = column 8 (leftmost, EXIT), bit7 = column 1 (rightmost, MORE).
+		// MAME KEY{R} lists keys left-to-right, bit0=leftmost, matching.
+		// MAME KEY{R} bits are ACTIVE_HIGH.
+		uint8_t portb = 0x00;
+		int mame_bit = 1 << sel_col;
+		for (int r = 0; r < 8; r++) {
+			char tag[8];
+			snprintf(tag, sizeof(tag), "KEY%d", r);
+			if (ioport(tag)->read() & mame_bit) {
+				portb |= (1 << r); // Row goes high (active-high)
+			}
+		}
+		if (portb != 0x00) logerror("hp4951b: PortB read col_bit=%d -> 0x%02X, pc=%04x\n", sel_col, portb, m_maincpu->pc());
 		return portb;
 	}
 	// Helper: check MAME inputs, return scancode (0xFF = no key).
@@ -462,23 +468,25 @@ void hp4951b_state::mem_map(address_map &map)
 void hp4951b_state::kbd_latch_w(uint8_t data) {
 	logerror("hp4951b: kbd_latch_w 0x18 = 0x%02X\n", data);
 	m_kbd_matrix_latch = data;
-	// SOFTKEY DECODER (Fig 8-31, combinational, TRANSPOSED): the 0x18 write
-	// selects a ROW. If the selected row is R1/R5/R6/R7 and any key in that
-	// row is pressed, the decoder fires RSTB. Hardware latch holds until PC1.
-	int sel_bit = -1;
-	for (int b = 0; b < 8; b++) {
-		if (data & (1 << b)) {
-			if (sel_bit != -1) return;
-			sel_bit = b;
+	// SOFTKEY DECODER (Fig 8-31, combinational): monitors R1,R5,R6,R7 for
+	// activity in the selected column. Fires when the RSTA scan (or any
+	// 0x18 write) selects a column with a pressed softkey. The hardware
+	// latch holds RSTB until the firmware clears it via PC1.
+	int sel_col = -1;
+	for (int c = 0; c < 8; c++) {
+		if (data & (1 << c)) {
+			if (sel_col != -1) return; // Multiple = invalid, decoder idle
+			sel_col = c;
 		}
 	}
-	if (sel_bit < 0) return;
-	int mame_row = 7 - sel_bit; // bit0 = top row (R7)
-	bool is_softkey_row = (mame_row == 1 || mame_row == 5 || mame_row == 6 || mame_row == 7);
-	if (!is_softkey_row) return;
-	char rtag[8];
-	snprintf(rtag, sizeof(rtag), "KEY%d", mame_row);
-	bool soft = (ioport(rtag)->read() != 0);
+	if (sel_col < 0) return; // No column -> decoder idle
+	// Firmware bit B = keyboard column (8-B); MAME bit = B (left-to-right).
+	int mame_bit = 1 << sel_col;
+	bool soft = false;
+	if (ioport("KEY1")->read() & mame_bit) soft = true;  // R1
+	if (ioport("KEY5")->read() & mame_bit) soft = true;  // R5
+	if (ioport("KEY6")->read() & mame_bit) soft = true;  // R6
+	if (ioport("KEY7")->read() & mame_bit) soft = true;  // R7
 	if (soft && !m_kbd_irq_asserted && (m_portc & 0x02)) {
 		// PC1 high = R\ inactive, latch can set. If PC1 is low, R\ holds
 		// the latch in reset and the decoder cannot fire.
