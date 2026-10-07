@@ -223,7 +223,7 @@ private:
 			break;
 		}
 	}
-	uint8_t m_kbd_matrix_latch = 0xFF;  // 74HC373 matrix drive latch (U302 output 3, 0x3800-0x3FFF, write-only side effect)
+	uint8_t m_kbd_matrix_latch = 0x00;  // U401 column latch (0x18); CPU bit=1 selects (U401 inverts to active-low)
 	bool m_kbd_irq_asserted = false;  // RSTB latch (set by SOFTKEY DECODER, cleared by PC1)
 	uint8_t m_softkey_prev = 0x00;  // Prev softkey rows (prevent re-trigger on hold; ISR does EI before Port B read)
 	// RIOT Port B (0x41): keyboard matrix sense inputs.
@@ -231,16 +231,17 @@ private:
 	// TODO: implement actual column mask from m_kbd_matrix_latch + MAME inputs.
 	uint8_t riot_pb_r() {
 		// 4951B keyboard matrix (Fig 8-31):
-		//   U401 latch (0x18) drives COLUMNS C0-C7 (active-low, bit=0 selects).
+		//   U401 latch (0x18) drives COLUMNS C0-C7. U401 inverts: CPU writes
+		//   bit=1 to select, hardware drives bit=0 (active-low).
 		//   ROWS R0-R7 go to RIOT Port B (PB0-PB7), with R301 pull-ups.
 		//   Key at (R,C) connects row to column; if column is driven low,
 		//   the row goes low (active-low).
-		//   Latch=0xFF (reset) = no columns selected -> 0xFF (all rows high).
+		//   Latch=0x00 (reset) = no columns selected -> 0xFF (all rows high).
 		uint8_t latch = m_kbd_matrix_latch;
-		// Find selected column (bit LOW). Must be exactly one.
+		// Find selected column (bit HIGH in CPU value). Must be exactly one.
 		int sel_col = -1;
 		for (int c = 0; c < 8; c++) {
-			if (!(latch & (1 << c))) {
+			if (latch & (1 << c)) {
 				if (sel_col != -1) return 0xFF; // Multiple = invalid
 				sel_col = c;
 			}
@@ -407,14 +408,15 @@ private:
 	}
 	void softkey_poll() {
 		// SOFTKEY DECODER (Fig 8-31): monitors R1,R5,R6,R7 (rows) for activity
-		// in the currently-selected COLUMN (U401 latch, bit=0 selects).
-		// If no column selected (latch=0xFF), the decoder sees nothing.
+		// in the currently-selected COLUMN (U401 latch, bit=1 selects in CPU
+		// value; U401 inverts to active-low).
+		// If no column selected (latch=0x00), the decoder sees nothing.
 		// Hardware latch: set when softkey active, cleared by PC1 (0x42/0x4A).
 		// Called from 60Hz poll timer (separate from RIOT timer).
 		uint8_t latch = m_kbd_matrix_latch;
 		int sel_col = -1;
 		for (int c = 0; c < 8; c++) {
-			if (!(latch & (1 << c))) {
+			if (latch & (1 << c)) {
 				if (sel_col != -1) { sel_col = -2; break; } // Multiple = invalid
 				sel_col = c;
 			}
@@ -814,7 +816,7 @@ void hp4951b_state::machine_reset()
 	// a softkey is held through reset.
 	m_kbd_irq_asserted = false;
 	m_maincpu->set_input_line(NSC800_RSTB, CLEAR_LINE);
-	m_kbd_matrix_latch = 0xFF;
+	m_kbd_matrix_latch = 0x00; // No columns selected (bit=1 selects in CPU value)
 	logerror("machine_reset!\n");
 }
 
