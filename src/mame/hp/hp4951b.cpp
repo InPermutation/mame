@@ -246,13 +246,12 @@ private:
 		}
 		if (sel_col == -1) return 0x00; // None selected
 		// Build Port B: for each row R, check key at (R, sel_col).
-		// Firmware bit B selects keyboard column (B+1) (Fig 8-31).
-		// MAME KEY{R} has bit (1<<(7-C)) for keyboard column (C+1);
-		// the MAME map lists keys left-to-right (EXIT@bit0 ... MORE@bit7),
-		// but the hardware has EXIT in column 8 and MORE in column 1.
+		// Firmware bit B selects keyboard column (8-B) (Fig 8-31):
+		// bit0 = column 8 (leftmost, EXIT), bit7 = column 1 (rightmost, MORE).
+		// MAME KEY{R} lists keys left-to-right, bit0=leftmost, matching.
 		// MAME KEY{R} bits are ACTIVE_HIGH.
 		uint8_t portb = 0x00;
-		int mame_bit = 1 << (7 - sel_col);
+		int mame_bit = 1 << sel_col;
 		for (int r = 0; r < 8; r++) {
 			char tag[8];
 			snprintf(tag, sizeof(tag), "KEY%d", r);
@@ -480,8 +479,8 @@ void hp4951b_state::kbd_latch_w(uint8_t data) {
 		}
 	}
 	if (sel_col < 0) return; // No column -> decoder idle
-	// Firmware bit B = keyboard column (B+1); MAME bit is reversed (7-B).
-	int mame_bit = 1 << (7 - sel_col);
+	// Firmware bit B = keyboard column (8-B); MAME bit = B (left-to-right).
+	int mame_bit = 1 << sel_col;
 	bool soft = false;
 	if (ioport("KEY1")->read() & mame_bit) soft = true;  // R1
 	if (ioport("KEY5")->read() & mame_bit) soft = true;  // R5
