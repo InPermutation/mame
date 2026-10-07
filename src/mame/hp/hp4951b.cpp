@@ -301,9 +301,10 @@ private:
 		m_tick_count = 0;
 	}
 	void ddr_a_w(uint8_t data) {
-		// Firmware uses Port A as all outputs. Abort on anything else.
-		if (data != 0xff)
-			fatalerror("hp4951b: DDR A = 0x%02X not implemented (expected 0xFF)\n", data);
+		// Port A is used for banking (outputs). Firmware writes 0xFF normally,
+		// 0xF7 when entering Auto Conf (PA3 becomes input). Allow both.
+		if (data != 0xff && data != 0xf7)
+			logerror("hp4951b: DDR A = 0x%02X (unexpected, allowing)\n", data);
 		m_ddr_a = data;
 	}
 	uint8_t ddr_b_r() { return m_ddr_b; }
