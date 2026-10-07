@@ -479,7 +479,9 @@ void hp4951b_state::kbd_latch_w(uint8_t data) {
 	if (ioport("KEY5")->read() & (1 << sel_col)) soft = true;  // R5
 	if (ioport("KEY6")->read() & (1 << sel_col)) soft = true;  // R6
 	if (ioport("KEY7")->read() & (1 << sel_col)) soft = true;  // R7
-	if (soft && !m_kbd_irq_asserted) {
+	if (soft && !m_kbd_irq_asserted && (m_portc & 0x02)) {
+		// PC1 high = R\ inactive, latch can set. If PC1 is low, R\ holds
+		// the latch in reset and the decoder cannot fire.
 		m_kbd_irq_asserted = true;
 		logerror("hp4951b: RSTB ASSERT (softkey decoder), pc=%04x\n", m_maincpu->pc());
 		m_maincpu->set_input_line(NSC800_RSTB, ASSERT_LINE);
