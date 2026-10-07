@@ -386,11 +386,11 @@ private:
 		// TODO: drive TIC CLOCK latch clock (C1) from T0 OUT
 	}
 	TIMER_CALLBACK_MEMBER(timer1_tick) {
-		// Timer 1 OUT -> U503 R\ (reset RSTC flip-flop)
-		// Per schematic: S\=STB\/PC2 sets RSTC, R\=T1 OUT/PC5 clears it
-		// C1=INT (tape), D=GND. RSTC is tape interrupt (not emulated yet).
-		logerror("hp4951b: timer1 tick (T1 OUT -> RSTC R\\)\n");
-		// RSTC would clear here, but it's never set (no tape board)
+		// Timer 1 OUT -> U503 R\ (active-low) -> Q=0 -> RSTC\=0 (active)
+		// Resetting the flip-flop ASSERTS RSTC (active-low interrupt)
+		logerror("hp4951b: RSTC ASSERT (timer1 T1 OUT -> R\\)\n");
+		m_maincpu->set_input_line(NSC800_RSTC, ASSERT_LINE);
+		m_maincpu->set_input_line(NSC800_RSTC, CLEAR_LINE);
 	}
 	void softkey_poll() {
 		// SOFTKEY DECODER (Fig 8-31): monitors R1,R5,R6,R7 (rows) for activity
