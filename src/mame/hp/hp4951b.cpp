@@ -318,11 +318,27 @@ private:
 		// U503 holds the latch steady until CPU acks (OUT 0x20),
 		// which strobes U304 to capture the current count.
 	}
-	void ddr_a_w(uint8_t data) { m_ddr_a = data; }
+	void ddr_a_w(uint8_t data) {
+		// Firmware uses Port A as all outputs. Abort on anything else.
+		if (data != 0xff)
+			fatalerror("hp4951b: DDR A = 0x%02X not implemented (expected 0xFF)\n", data);
+		m_ddr_a = data;
+	}
 	uint8_t ddr_b_r() { return m_ddr_b; }
-	void ddr_b_w(uint8_t data) { m_ddr_b = data; }
+	void ddr_b_w(uint8_t data) {
+		// Firmware uses Port B as all inputs (keyboard rows). Abort on anything else.
+		if (data != 0x00)
+			fatalerror("hp4951b: DDR B = 0x%02X not implemented (expected 0x00)\n", data);
+		m_ddr_b = data;
+	}
 	uint8_t ddr_c_r() { return m_ddr_c; }
-	void ddr_c_w(uint8_t data) { m_ddr_c = data; }
+	void ddr_c_w(uint8_t data) {
+		// Firmware uses Port C = 0x2F (outputs: PC0,PC1,PC2,PC3,PC5; inputs: PC4,PC6,PC7).
+		// Abort on anything else.
+		if (data != 0x2f)
+			fatalerror("hp4951b: DDR C = 0x%02X not implemented (expected 0x2F)\n", data);
+		m_ddr_c = data;
+	}
 	uint8_t mdr_r() { return m_mdr; }
 	void mdr_w(uint8_t data) {
 		// MDR mode encoding (not binary):
@@ -363,27 +379,27 @@ private:
 		}
 	}
 	void start_timer0() {
-		// Square Wave mode (101) = periodic interrupt for keyboard scan
-		if ((m_timer0_mode & 0x07) == 0x05 && m_timer0_running) {
+		// We only model Square Wave mode (bits 2-0 = 101). Abort on anything else.
+		if ((m_timer0_mode & 0x07) != 0x05)
+			fatalerror("hp4951b: timer0 mode bits 0x%02X not implemented (expected 0x05)\n", m_timer0_mode & 0x07);
+		if (m_timer0_running) {
 			// TODO: calculate period from load value and prescale
 			// For now, use 60Hz (matches old softkey_tick)
 			m_timer0->adjust(attotime::from_hz(60), 0, attotime::from_hz(60));
-		} else {
-			m_timer0->adjust(attotime::never);
 		}
 	}
 	void start_timer1() {
-		if ((m_timer1_mode & 0x07) == 0x05 && m_timer1_running) {
+		// We only model Square Wave mode (bits 2-0 = 101). Abort on anything else.
+		if ((m_timer1_mode & 0x07) != 0x05)
+			fatalerror("hp4951b: timer1 mode bits 0x%02X not implemented (expected 0x05)\n", m_timer1_mode & 0x07);
+		if (m_timer1_running) {
 			m_timer1->adjust(attotime::from_hz(60), 0, attotime::from_hz(60));
-		} else {
-			m_timer1->adjust(attotime::never);
 		}
 	}
 	TIMER_CALLBACK_MEMBER(timer0_tick) {
 		// Timer 0 expired - T0 OUT goes to TIC CLOCK latches (not RSTA)
 		// The TIC CLOCK generates RSTA, not the RIOT timer directly
 		logerror("hp4951b: timer0 tick (T0 OUT -> TIC CLOCK)\n");
-		// TODO: drive TIC CLOCK latch clock (C1) from T0 OUT
 	}
 	TIMER_CALLBACK_MEMBER(timer1_tick) {
 		// Timer 1 OUT -> U503 R\ (active-low) -> Q=0 -> RSTC\=0 (active)
