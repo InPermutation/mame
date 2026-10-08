@@ -81,14 +81,68 @@ private:
 	void win_w(offs_t offset, uint8_t data);
 	uint8_t bank_r(offs_t offset);
 	void bank_w(offs_t offset, uint8_t data);
-	uint8_t m_portc = 0x00;  // 810 Port C output latch (PC3 = buzzer)
 	uint8_t m_porta = 0x00;  // 810 Port A output latch (PA0/PA4 = 0x8000 bank, PA1/PA2 = 0x2000 window)
+	uint8_t m_portc = 0x00;  // 810 Port C output latch (PC3 = buzzer)
+	void porta_update() {
+		// Derive banking from Port A bits (per 4951A schematic reverse-engineering):
+		// PA0+PA4 select 0x8000 bank, PA1/PA2/PA5/PA6 select 0x2000 window.
+		pager_w(m_porta);
+	}
+	uint8_t riot_pa_r() {
+		// Read the Port A bank-selection bits from the 810 RIOT
+		return m_porta;
+	}
+	void riot_pa_w(uint8_t data) {
+		// 810 Port A Data (0x40): direct write.
+		m_porta = data;
+		porta_update();
+	}
+	void riot_pa_bit_clear(uint8_t data) {
+		// 810 Port A Bit-Clear (0x48): write 1 to clear bit.
+		m_porta &= ~data;
+		porta_update();
+	}
+	void riot_pa_bit_set(uint8_t data) {
+		// 810 Port A Bit-Set (0x4C): write 1 to set bit.
+		m_porta |= data;
+		porta_update();
+	}
+	// RIOT Port B (0x41): keyboard matrix sense inputs.
+	uint8_t riot_pb_r() {
+		// 4951B keyboard matrix (Fig 8-31), TRANSPOSED (counterclockwise):
+		//   U401 latch at 0x18 selects a ROW (one-hot, bit=1).
+		//   Port B reads the COLUMNS (active-high).
+		//   Firmware bit0 = bottom row (R0/X-Z), bit7 = top row (R7/EXIT).
+		//   Port B bit7 = leftmost column, bit0 = rightmost column.
+		//   MAME KEY{R}: R0=bottom, R7=top; bit0=leftmost, bit7=rightmost.
+		uint8_t latch = m_kbd_matrix_latch;
+		int sel_bit = -1;
+		for (int b = 0; b < 8; b++) {
+			if (latch & (1 << b)) {
+				if (sel_bit != -1) return 0x00;
+				sel_bit = b;
+			}
+		}
+		if (sel_bit == -1) return 0x00;
+		char tag[8];
+		snprintf(tag, sizeof(tag), "KEY%d", sel_bit);
+		uint8_t rowbits = ioport(tag)->read();
+		uint8_t portb = 0x00;
+		for (int c = 0; c < 8; c++) {
+			if (rowbits & (1 << c)) portb |= (1 << (7 - c));
+		}
+		if (portb != 0x00) logerror("hp4951b: PortB read row_bit=%d -> 0x%02X, pc=%04x\n", sel_bit, portb, m_maincpu->pc());
+		return portb;
+	}
 	void portc_update() {
 		logerror("hp4951b: BUZZER %s (PC=%04x, cycles=%llu)\n",
 			(m_portc & 0x08) ? "BEEP" : "off", m_maincpu->pc(),
 			(unsigned long long)m_maincpu->total_cycles());
 	}
-	void port42_w(uint8_t data) {
+	uint8_t riot_pc_r() {
+		return m_portc;
+	}
+	void riot_pc_w(uint8_t data) {
 		// 810 Port C Data (0x42): direct write.
 		// PC1 (bit 1) falling edge (1→0) acks the RSTB latch.
 		uint8_t old = m_portc;
@@ -99,7 +153,7 @@ private:
 		}
 		portc_update();
 	}
-	void port4a_w(uint8_t data) {
+	void riot_pc_bit_clear(uint8_t data) {
 		// 810 Port C Bit-Clear (0x4A): write 1 to clear bit.
 		// PC1 (bit 1) falling edge acks the RSTB latch.
 		uint8_t old = m_portc;
@@ -111,36 +165,11 @@ private:
 		}
 		portc_update();
 	}
-	void port4e_w(uint8_t data) {
+	void riot_pc_bit_set(uint8_t data) {
 		// 810 Port C Bit-Set (0x4E): write 1 to set bit.
 		// Setting PC1 does NOT ack; only the 1→0 transition does.
 		m_portc |= data;
 		portc_update();
-	}
-	void porta_update() {
-		// Derive banking from Port A bits (per 4951A schematic reverse-engineering):
-		// PA0+PA4 select 0x8000 bank, PA1/PA2/PA5/PA6 select 0x2000 window.
-		// Reuse the existing pager_w logic which already handles the PA patterns.
-		pager_w(m_porta);
-	}
-	void port40_w(uint8_t data) {
-		// 810 Port A Data (0x40): direct write.
-		m_porta = data;
-		porta_update();
-	}
-	uint8_t port40_r() {
-		// NSC810 Port A reads return the output latch.
-		return m_porta;
-	}
-	void port48_w(uint8_t data) {
-		// 810 Port A Bit-Clear (0x48): write 1 to clear bit.
-		m_porta &= ~data;
-		porta_update();
-	}
-	void port4c_w(uint8_t data) {
-		// 810 Port A Bit-Set (0x4C): write 1 to set bit.
-		m_porta |= data;
-		porta_update();
 	}
 	uint8_t regs30_r(offs_t offset) { return m_regs30[offset & 0xf]; }
 	void regs30_w(offs_t offset, uint8_t data) { m_regs30[offset & 0xf] = data; }
@@ -211,52 +240,8 @@ private:
 			default: return 0x00;
 		}
 	}
-	void kbd_w(offs_t offset, uint8_t data) {
-		switch (offset & 3) {
-		case 1:  // 0xC1: acknowledge (firmware writes 0x38 after reading).
-			// No hardware state; the 0x38 also hits the 0x3800 matrix
-			// latch as a side effect (handled in io_w).
-			break;
-		case 3:  // 0xC3: firmware boot test writes patterns here.
-			// Hardware latch would capture them; we ignore (scanner output
-			// takes precedence via kbd_r). The boot test may fail; if so,
-			// we'll revisit.
-			break;
-		default:
-			break;
-		}
-	}
 	uint8_t m_kbd_matrix_latch = 0x00;  // U401 (74HC374) column latch (0x18); CPU bit=1 selects column
 	bool m_kbd_irq_asserted = false;  // RSTB latch (set by SOFTKEY DECODER, cleared by PC1)
-	// RIOT Port B (0x41): keyboard matrix sense inputs.
-	// Returns 0x00 always for now (ISR handles gracefully).
-	// TODO: implement actual column mask from m_kbd_matrix_latch + MAME inputs.
-	uint8_t riot_pb_r() {
-		// 4951B keyboard matrix (Fig 8-31), TRANSPOSED (counterclockwise):
-		//   U401 latch at 0x18 selects a ROW (one-hot, bit=1).
-		//   Port B reads the COLUMNS (active-high).
-		//   Firmware bit0 = bottom row (R0/X-Z), bit7 = top row (R7/EXIT).
-		//   Port B bit7 = leftmost column, bit0 = rightmost column.
-		//   MAME KEY{R}: R0=bottom, R7=top; bit0=leftmost, bit7=rightmost.
-		uint8_t latch = m_kbd_matrix_latch;
-		int sel_bit = -1;
-		for (int b = 0; b < 8; b++) {
-			if (latch & (1 << b)) {
-				if (sel_bit != -1) return 0x00;
-				sel_bit = b;
-			}
-		}
-		if (sel_bit == -1) return 0x00;
-		char tag[8];
-		snprintf(tag, sizeof(tag), "KEY%d", sel_bit);
-		uint8_t rowbits = ioport(tag)->read();
-		uint8_t portb = 0x00;
-		for (int c = 0; c < 8; c++) {
-			if (rowbits & (1 << c)) portb |= (1 << (7 - c));
-		}
-		if (portb != 0x00) logerror("hp4951b: PortB read row_bit=%d -> 0x%02X, pc=%04x\n", sel_bit, portb, m_maincpu->pc());
-		return portb;
-	}
 	// Helper: check MAME inputs, return scancode (0xFF = no key).
 	// Host-to-emulator bridge: poll MAME input ports (KEY0-KEY8) and return
 	// the HP 4951A matrix position (row*8+col) for the currently pressed
@@ -276,7 +261,7 @@ private:
 		}
 		return 0xFF;  // no key pressed
 	}
-	uint8_t ddr_a_r() { return m_ddr_a; }
+	uint8_t riot_ddra_r() { return m_ddr_a; }
 	// POD (0x10-0x17) stub
 	uint8_t pod_r(offs_t offset) {
 		logerror("hp4951b: pod_r 0x%02X\n", 0x10 | (offset & 0x7));
@@ -304,22 +289,22 @@ private:
 		m_tick_latch = m_tick_count & 0x3f; // Latch bits 0-5 before reset
 		m_tick_count = 0;
 	}
-	void ddr_a_w(uint8_t data) {
+	void riot_ddra_w(uint8_t data) {
 		// Port A is used for banking (outputs). Firmware writes 0xFF normally,
 		// 0xF7 when entering Auto Conf (PA3 becomes input). Allow both.
 		if (data != 0xff && data != 0xf7)
 			logerror("hp4951b: DDR A = 0x%02X (unexpected, allowing)\n", data);
 		m_ddr_a = data;
 	}
-	uint8_t ddr_b_r() { return m_ddr_b; }
-	void ddr_b_w(uint8_t data) {
+	uint8_t riot_ddrb_r() { return m_ddr_b; }
+	void riot_ddrb_w(uint8_t data) {
 		// Firmware uses Port B as all inputs (keyboard rows). Abort on anything else.
 		if (data != 0x00)
 			fatalerror("hp4951b: DDR B = 0x%02X not implemented (expected 0x00)\n", data);
 		m_ddr_b = data;
 	}
-	uint8_t ddr_c_r() { return m_ddr_c; }
-	void ddr_c_w(uint8_t data) {
+	uint8_t riot_ddrc_r() { return m_ddr_c; }
+	void riot_ddrc_w(uint8_t data) {
 		// Firmware uses Port C = 0x2F (outputs: PC0,PC1,PC2,PC3,PC5; inputs: PC4,PC6,PC7).
 		// Abort on anything else.
 		if (data != 0x2f)
@@ -528,16 +513,16 @@ void hp4951b_state::io_map(address_map &map)
 	map(0x00bb, 0x00bb).rw(FUNC(hp4951b_state::unkbb_r), FUNC(hp4951b_state::unkbb_w));
 
 	// RIOT (0x40-0x7F) - specific registers
-	map(0x0040, 0x0040).rw(FUNC(hp4951b_state::port40_r), FUNC(hp4951b_state::port40_w)); // Port A Data
-	map(0x0041, 0x0041).r(FUNC(hp4951b_state::riot_pb_r)); // Port B Data
-	map(0x0042, 0x0042).w(FUNC(hp4951b_state::port42_w)); // Port C Data
-	map(0x0048, 0x0048).w(FUNC(hp4951b_state::port48_w));
-	map(0x004a, 0x004a).w(FUNC(hp4951b_state::port4a_w)); // Port C bit-clear
-	map(0x004c, 0x004c).w(FUNC(hp4951b_state::port4c_w)); // Port A bit-set
-	map(0x004e, 0x004e).w(FUNC(hp4951b_state::port4e_w)); // Port C bit-set
-	map(0x0044, 0x0044).rw(FUNC(hp4951b_state::ddr_a_r), FUNC(hp4951b_state::ddr_a_w));
-	map(0x0045, 0x0045).rw(FUNC(hp4951b_state::ddr_b_r), FUNC(hp4951b_state::ddr_b_w));
-	map(0x0046, 0x0046).rw(FUNC(hp4951b_state::ddr_c_r), FUNC(hp4951b_state::ddr_c_w));
+	map(0x0040, 0x0040).rw(FUNC(hp4951b_state::riot_pa_r), FUNC(hp4951b_state::riot_pa_w));
+	map(0x0041, 0x0041).r(FUNC(hp4951b_state::riot_pb_r));
+	map(0x0042, 0x0042).rw(FUNC(hp4951b_state::riot_pc_r), FUNC(hp4951b_state::riot_pc_w));
+	map(0x0048, 0x0048).w(FUNC(hp4951b_state::riot_pa_bit_clear));
+	map(0x004a, 0x004a).w(FUNC(hp4951b_state::riot_pc_bit_clear));
+	map(0x004c, 0x004c).w(FUNC(hp4951b_state::riot_pa_bit_set));
+	map(0x004e, 0x004e).w(FUNC(hp4951b_state::riot_pc_bit_set));
+	map(0x0044, 0x0044).rw(FUNC(hp4951b_state::riot_ddra_r), FUNC(hp4951b_state::riot_ddra_w));
+	map(0x0045, 0x0045).rw(FUNC(hp4951b_state::riot_ddrb_r), FUNC(hp4951b_state::riot_ddrb_w));
+	map(0x0046, 0x0046).rw(FUNC(hp4951b_state::riot_ddrc_r), FUNC(hp4951b_state::riot_ddrc_w));
 	map(0x0047, 0x0047).rw(FUNC(hp4951b_state::mdr_r), FUNC(hp4951b_state::mdr_w));
 	map(0x0050, 0x0059).rw(FUNC(hp4951b_state::timer_r), FUNC(hp4951b_state::timer_w));
 
@@ -803,8 +788,8 @@ void hp4951b_state::machine_start()
 
 	machine().add_notifier(MACHINE_NOTIFY_EXIT, machine_notify_delegate(&hp4951b_state::dump_vram, this));
 
-	save_item(NAME(m_portc));
 	save_item(NAME(m_porta));
+	save_item(NAME(m_portc));
 	logerror("machine_start!\n");
 }
 
