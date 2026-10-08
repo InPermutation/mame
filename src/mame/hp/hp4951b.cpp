@@ -128,6 +128,10 @@ private:
 		m_porta = data;
 		porta_update();
 	}
+	uint8_t port40_r() {
+		// NSC810 Port A reads return the output latch.
+		return m_porta;
+	}
 	void port48_w(uint8_t data) {
 		// 810 Port A Bit-Clear (0x48): write 1 to clear bit.
 		m_porta &= ~data;
@@ -524,7 +528,7 @@ void hp4951b_state::io_map(address_map &map)
 	map(0x00bb, 0x00bb).rw(FUNC(hp4951b_state::unkbb_r), FUNC(hp4951b_state::unkbb_w));
 
 	// RIOT (0x40-0x7F) - specific registers
-	map(0x0040, 0x0040).w(FUNC(hp4951b_state::port40_w)); // Port A Data
+	map(0x0040, 0x0040).rw(FUNC(hp4951b_state::port40_r), FUNC(hp4951b_state::port40_w)); // Port A Data
 	map(0x0041, 0x0041).r(FUNC(hp4951b_state::riot_pb_r)); // Port B Data
 	map(0x0042, 0x0042).w(FUNC(hp4951b_state::port42_w)); // Port C Data
 	map(0x0048, 0x0048).w(FUNC(hp4951b_state::port48_w));
