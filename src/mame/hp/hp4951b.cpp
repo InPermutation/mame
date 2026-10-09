@@ -135,9 +135,7 @@ private:
 		return portb;
 	}
 	void portc_update() {
-		logerror("hp4951b: BUZZER %s (PC=%04x, cycles=%llu)\n",
-			(m_portc & 0x08) ? "BEEP" : "off", m_maincpu->pc(),
-			(unsigned long long)m_maincpu->total_cycles());
+		// PC3 drives the piezo buzzer (no sound in tiny build).
 	}
 	uint8_t riot_pc_r() {
 		return m_portc;
