@@ -371,6 +371,7 @@ private:
 			m_timer1->adjust(attotime::from_hz(60), 0, attotime::from_hz(60));
 		}
 	}
+	TIMER_CALLBACK_MEMBER(poweron_reset_tick);
 	TIMER_CALLBACK_MEMBER(timer0_tick) {
 		// T0 OUT clocks the U404 TIC CLOCK counter (one count per T0 OUT).
 		// Bit 6 rising (every 64 counts) -> RSTA via NOR.
@@ -766,11 +767,22 @@ MC6845_UPDATE_ROW(hp4951b_state::crtc_update_row)
 }
 
 
+TIMER_CALLBACK_MEMBER(hp4951b_state::poweron_reset_tick)
+{
+	// Release CPU from power-on reset; firmware will silence the beeper.
+	m_maincpu->set_input_line(INPUT_LINE_RESET, CLEAR_LINE);
+}
+
 void hp4951b_state::machine_start()
 {
 	// At power-on, the NSC810 Port C is tristate; R503 pull-up holds the
 	// U504 555 RST pin high, so the beeper sounds until the CPU takes over.
 	m_beep->set_state(1);
+
+	// (RESET IN)\ has R16=237K pull-up and C7=4.7uF to ground: ~1.1s delay.
+	// Hold CPU in reset while the beeper sounds.
+	m_maincpu->set_input_line(INPUT_LINE_RESET, ASSERT_LINE);
+	timer_alloc(FUNC(hp4951b_state::poweron_reset_tick), this)->adjust(attotime::from_msec(1100));
 
 	m_bankram = std::make_unique<uint8_t[]>(0x8000);
 	memset(m_bankram.get(), 0, 0x8000);
