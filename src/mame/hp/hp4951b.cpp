@@ -41,6 +41,7 @@
 #include "cpu/z80/nsc800.h"
 #include "video/mc6845.h"
 #include "machine/timer.h"
+#include "sound/beep.h"
 
 #include "screen.h"
 
@@ -55,6 +56,7 @@ public:
 		m_maincpu(*this, "maincpu"),
 		m_crtc(*this, "crtc"),
 		m_screen(*this, "screen"),
+		m_beep(*this, "beeper"),
 		m_mainram(*this, "mainram"),
 		m_chargen(*this, "chargen")
 	{ }
@@ -135,7 +137,8 @@ private:
 		return portb;
 	}
 	void portc_update() {
-		// PC3 drives the piezo buzzer (no sound in tiny build).
+		// PC3 gates the U504 555 RST pin (high = beep).
+		m_beep->set_state(BIT(m_portc, 3));
 	}
 	uint8_t riot_pc_r() {
 		return m_portc;
@@ -393,6 +396,7 @@ private:
 	required_device<nsc800_device> m_maincpu;
 	required_device<mc6845_device> m_crtc;
 	required_device<screen_device> m_screen;
+	required_device<beep_device> m_beep;
 	// 0x2000 window state: 0=RAM, 1=10023 JP table, 2=10024 JP table
 	uint8_t m_winstate = 0;
 	// 0x8000 bank state: 0=RAM, 1=10023, 2=10024, 3=10022
@@ -911,6 +915,7 @@ void hp4951b_state::hp4951b(machine_config &config)
 	m_screen->set_raw(4.9152_MHz_XTAL, 40 * 8, 0, 32 * 8, 18 * 14, 0, 16 * 14);
 	m_screen->set_screen_update("crtc", FUNC(mc6845_device::screen_update));
 
+	BEEP(config, m_beep, 2630); // U504 ICM7555 ~2.63kHz, gated by PC3
 	MC6845(config, m_crtc, 4.9152_MHz_XTAL / 8);
 	m_crtc->set_screen("screen");
 	m_crtc->set_show_border_area(false);
