@@ -41,6 +41,7 @@
 #include "cpu/z80/nsc800.h"
 #include "video/mc6845.h"
 #include "machine/timer.h"
+#include "machine/nsc810.h"
 #include "sound/beep.h"
 #include "speaker.h"
 
@@ -58,6 +59,7 @@ public:
 		m_crtc(*this, "crtc"),
 		m_screen(*this, "screen"),
 		m_beep(*this, "beeper"),
+		m_iotimer(*this, "iotimer"),
 		m_mainram(*this, "mainram"),
 		m_chargen(*this, "chargen")
 	{ }
@@ -140,6 +142,21 @@ private:
 	void portc_update() {
 		// PC3 gates the U504 555 RST pin (high = beep).
 		m_beep->set_state(BIT(m_portc, 3));
+	}
+	// NSC810 device callbacks
+	void iotimer_pa_w(uint8_t data) {
+		// Port A drives the pager (bank selection).
+		m_porta = data;
+		porta_update();
+	}
+	uint8_t iotimer_pb_r() {
+		// Port B reads the keyboard matrix (same as riot_pb_r).
+		return riot_pb_r();
+	}
+	void iotimer_pc_w(uint8_t data) {
+		// Port C bit 3 gates the beeper.
+		m_portc = data;
+		portc_update();
 	}
 	uint8_t riot_pc_r() {
 		return m_portc;
@@ -399,6 +416,7 @@ private:
 	required_device<mc6845_device> m_crtc;
 	required_device<screen_device> m_screen;
 	required_device<beep_device> m_beep;
+	required_device<nsc810_device> m_iotimer;
 	// 0x2000 window state: 0=RAM, 1=10023 JP table, 2=10024 JP table
 	uint8_t m_winstate = 0;
 	// 0x8000 bank state: 0=RAM, 1=10023, 2=10024, 3=10022
@@ -517,17 +535,8 @@ void hp4951b_state::io_map(address_map &map)
 	map(0xbb, 0xbb).rw(FUNC(hp4951b_state::unkbb_r), FUNC(hp4951b_state::unkbb_w));
 
 	// RIOT (0x40-0x7F) - specific registers
-	map(0x40, 0x40).rw(FUNC(hp4951b_state::riot_pa_r), FUNC(hp4951b_state::riot_pa_w));
-	map(0x41, 0x41).r(FUNC(hp4951b_state::riot_pb_r));
-	map(0x42, 0x42).rw(FUNC(hp4951b_state::riot_pc_r), FUNC(hp4951b_state::riot_pc_w));
-	map(0x48, 0x48).w(FUNC(hp4951b_state::riot_pa_bit_clear));
-	map(0x4a, 0x4a).w(FUNC(hp4951b_state::riot_pc_bit_clear));
-	map(0x4c, 0x4c).w(FUNC(hp4951b_state::riot_pa_bit_set));
-	map(0x4e, 0x4e).w(FUNC(hp4951b_state::riot_pc_bit_set));
-	map(0x44, 0x44).rw(FUNC(hp4951b_state::riot_ddra_r), FUNC(hp4951b_state::riot_ddra_w));
-	map(0x45, 0x45).rw(FUNC(hp4951b_state::riot_ddrb_r), FUNC(hp4951b_state::riot_ddrb_w));
-	map(0x46, 0x46).rw(FUNC(hp4951b_state::riot_ddrc_r), FUNC(hp4951b_state::riot_ddrc_w));
-	map(0x47, 0x47).rw(FUNC(hp4951b_state::mdr_r), FUNC(hp4951b_state::mdr_w));
+	// RIOT (NSC810) at 0x40-0x5F: device handles registers, callbacks hook pager/keyboard/buzzer
+	map(0x40, 0x5f).rw(m_iotimer, FUNC(nsc810_device::read), FUNC(nsc810_device::write));
 	map(0x50, 0x59).rw(FUNC(hp4951b_state::timer_r), FUNC(hp4951b_state::timer_w));
 
 	// X6 ACIA (0x30-0x37)
@@ -934,6 +943,12 @@ void hp4951b_state::hp4951b(machine_config &config)
 
 	SPEAKER(config, "mono").front_center();
 	BEEP(config, m_beep, 2630).add_route(ALL_OUTPUTS, "mono", 1.0); // U504 ICM7555 ~2.63kHz, gated by PC3
+	// NSC810 RIOT (4 MHz): Port A=pager, Port B=keyboard, Port C=buzzer
+	// Timer clocks: T0 drives TIC CLOCK (3840 Hz via divider)
+	nsc810_device &iotimer(NSC810(config, m_iotimer, 4_MHz_XTAL, 4_MHz_XTAL));
+	iotimer.portA_write_callback().set(FUNC(hp4951b_state::iotimer_pa_w));
+	iotimer.portB_read_callback().set(FUNC(hp4951b_state::iotimer_pb_r));
+	iotimer.portC_write_callback().set(FUNC(hp4951b_state::iotimer_pc_w));
 	MC6845(config, m_crtc, 4.9152_MHz_XTAL / 8);
 	m_crtc->set_screen("screen");
 	m_crtc->set_show_border_area(false);
