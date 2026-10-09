@@ -42,6 +42,7 @@
 #include "video/mc6845.h"
 #include "machine/timer.h"
 #include "sound/beep.h"
+#include "speaker.h"
 
 #include "screen.h"
 
@@ -915,7 +916,8 @@ void hp4951b_state::hp4951b(machine_config &config)
 	m_screen->set_raw(4.9152_MHz_XTAL, 40 * 8, 0, 32 * 8, 18 * 14, 0, 16 * 14);
 	m_screen->set_screen_update("crtc", FUNC(mc6845_device::screen_update));
 
-	BEEP(config, m_beep, 2630); // U504 ICM7555 ~2.63kHz, gated by PC3
+	SPEAKER(config, "mono").front_center();
+	BEEP(config, m_beep, 2630).add_route(ALL_OUTPUTS, "mono", 1.0); // U504 ICM7555 ~2.63kHz, gated by PC3
 	MC6845(config, m_crtc, 4.9152_MHz_XTAL / 8);
 	m_crtc->set_screen("screen");
 	m_crtc->set_show_border_area(false);
