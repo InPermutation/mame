@@ -768,6 +768,10 @@ MC6845_UPDATE_ROW(hp4951b_state::crtc_update_row)
 
 void hp4951b_state::machine_start()
 {
+	// At power-on, the NSC810 Port C is tristate; R503 pull-up holds the
+	// U504 555 RST pin high, so the beeper sounds until the CPU takes over.
+	m_beep->set_state(1);
+
 	m_bankram = std::make_unique<uint8_t[]>(0x8000);
 	memset(m_bankram.get(), 0, 0x8000);
 
