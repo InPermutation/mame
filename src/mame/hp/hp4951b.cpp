@@ -504,44 +504,44 @@ void hp4951b_state::io_map(address_map &map)
 	map.global_mask(0xff);
 
 	// DLC (0xC0-0xFF)
-	map(0x00c0, 0x00ff).rw(FUNC(hp4951b_state::dlc_r), FUNC(hp4951b_state::dlc_w));
+	map(0xc0, 0xff).rw(FUNC(hp4951b_state::dlc_r), FUNC(hp4951b_state::dlc_w));
 
 	// POD (0x10-0x17): POD latches (stub - return 0x00 = ready)
-	map(0x0010, 0x0017).rw(FUNC(hp4951b_state::pod_r), FUNC(hp4951b_state::pod_w));
+	map(0x10, 0x17).rw(FUNC(hp4951b_state::pod_r), FUNC(hp4951b_state::pod_w));
 
 	// 0xBB: unknown (in 0x80-0xBF range) - stub
-	map(0x00bb, 0x00bb).rw(FUNC(hp4951b_state::unkbb_r), FUNC(hp4951b_state::unkbb_w));
+	map(0xbb, 0xbb).rw(FUNC(hp4951b_state::unkbb_r), FUNC(hp4951b_state::unkbb_w));
 
 	// RIOT (0x40-0x7F) - specific registers
-	map(0x0040, 0x0040).rw(FUNC(hp4951b_state::riot_pa_r), FUNC(hp4951b_state::riot_pa_w));
-	map(0x0041, 0x0041).r(FUNC(hp4951b_state::riot_pb_r));
-	map(0x0042, 0x0042).rw(FUNC(hp4951b_state::riot_pc_r), FUNC(hp4951b_state::riot_pc_w));
-	map(0x0048, 0x0048).w(FUNC(hp4951b_state::riot_pa_bit_clear));
-	map(0x004a, 0x004a).w(FUNC(hp4951b_state::riot_pc_bit_clear));
-	map(0x004c, 0x004c).w(FUNC(hp4951b_state::riot_pa_bit_set));
-	map(0x004e, 0x004e).w(FUNC(hp4951b_state::riot_pc_bit_set));
-	map(0x0044, 0x0044).rw(FUNC(hp4951b_state::riot_ddra_r), FUNC(hp4951b_state::riot_ddra_w));
-	map(0x0045, 0x0045).rw(FUNC(hp4951b_state::riot_ddrb_r), FUNC(hp4951b_state::riot_ddrb_w));
-	map(0x0046, 0x0046).rw(FUNC(hp4951b_state::riot_ddrc_r), FUNC(hp4951b_state::riot_ddrc_w));
-	map(0x0047, 0x0047).rw(FUNC(hp4951b_state::mdr_r), FUNC(hp4951b_state::mdr_w));
-	map(0x0050, 0x0059).rw(FUNC(hp4951b_state::timer_r), FUNC(hp4951b_state::timer_w));
+	map(0x40, 0x40).rw(FUNC(hp4951b_state::riot_pa_r), FUNC(hp4951b_state::riot_pa_w));
+	map(0x41, 0x41).r(FUNC(hp4951b_state::riot_pb_r));
+	map(0x42, 0x42).rw(FUNC(hp4951b_state::riot_pc_r), FUNC(hp4951b_state::riot_pc_w));
+	map(0x48, 0x48).w(FUNC(hp4951b_state::riot_pa_bit_clear));
+	map(0x4a, 0x4a).w(FUNC(hp4951b_state::riot_pc_bit_clear));
+	map(0x4c, 0x4c).w(FUNC(hp4951b_state::riot_pa_bit_set));
+	map(0x4e, 0x4e).w(FUNC(hp4951b_state::riot_pc_bit_set));
+	map(0x44, 0x44).rw(FUNC(hp4951b_state::riot_ddra_r), FUNC(hp4951b_state::riot_ddra_w));
+	map(0x45, 0x45).rw(FUNC(hp4951b_state::riot_ddrb_r), FUNC(hp4951b_state::riot_ddrb_w));
+	map(0x46, 0x46).rw(FUNC(hp4951b_state::riot_ddrc_r), FUNC(hp4951b_state::riot_ddrc_w));
+	map(0x47, 0x47).rw(FUNC(hp4951b_state::mdr_r), FUNC(hp4951b_state::mdr_w));
+	map(0x50, 0x59).rw(FUNC(hp4951b_state::timer_r), FUNC(hp4951b_state::timer_w));
 
 	// X6 ACIA (0x30-0x37)
-	map(0x0030, 0x0033).rw(FUNC(hp4951b_state::acia_r), FUNC(hp4951b_state::acia_w));
-	map(0x0034, 0x0037).rw(FUNC(hp4951b_state::regs30_r), FUNC(hp4951b_state::regs30_w));
-	map(0x0039, 0x003f).rw(FUNC(hp4951b_state::regs30_r), FUNC(hp4951b_state::regs30_w));
+	map(0x30, 0x33).rw(FUNC(hp4951b_state::acia_r), FUNC(hp4951b_state::acia_w));
+	map(0x34, 0x37).rw(FUNC(hp4951b_state::regs30_r), FUNC(hp4951b_state::regs30_w));
+	map(0x39, 0x3f).rw(FUNC(hp4951b_state::regs30_r), FUNC(hp4951b_state::regs30_w));
 
 	// TIC CLOCK (0x20-0x27): U404 8-bit counter, U304 latch (bits 0-5)
 	// Bit 6 -> RSTA via NOR (fires every 64 counts)
-	map(0x0020, 0x0027).rw(FUNC(hp4951b_state::tick_r), FUNC(hp4951b_state::tick_w));
+	map(0x20, 0x27).rw(FUNC(hp4951b_state::tick_r), FUNC(hp4951b_state::tick_w));
 
 	// KEY BD LATCH (0x18-0x1F, write-only)
-	map(0x0018, 0x001f).w(FUNC(hp4951b_state::kbd_latch_w));
+	map(0x18, 0x1f).w(FUNC(hp4951b_state::kbd_latch_w));
 
 	// C/S CRTC (0x08-0x0F, A10 mirror)
-	map(0x0008, 0x0008).mirror(0x0004).w(FUNC(hp4951b_state::crtc_address_w));
-	map(0x0009, 0x0009).mirror(0x0004).rw(FUNC(hp4951b_state::crtc_register_r), FUNC(hp4951b_state::crtc_register_w));
-	map(0x000b, 0x000b).mirror(0x0004).r(FUNC(hp4951b_state::crtc_status_r));
+	map(0x08, 0x08).mirror(0x04).w(FUNC(hp4951b_state::crtc_address_w));
+	map(0x09, 0x09).mirror(0x04).rw(FUNC(hp4951b_state::crtc_register_r), FUNC(hp4951b_state::crtc_register_w));
+	map(0x0b, 0x0b).mirror(0x04).r(FUNC(hp4951b_state::crtc_status_r));
 }
 
 
