@@ -93,27 +93,18 @@ private:
 		// PA0+PA4 select 0x8000 bank, PA1/PA2/PA5/PA6 select 0x2000 window.
 		pager_w(m_porta);
 	}
-	uint8_t riot_pa_r() {
-		// Read the Port A bank-selection bits from the 810 RIOT
-		return m_porta;
+	// RIOT Port B: keyboard matrix sense inputs (via NSC810 device callback).
+	void portc_update() {
+		// PC3 gates the U504 555 RST pin (high = beep).
+		m_beep->set_state(BIT(m_portc, 3));
 	}
-	void riot_pa_w(uint8_t data) {
-		// 810 Port A Data (0x40): direct write.
+	// NSC810 device callbacks
+	void iotimer_pa_w(uint8_t data) {
+		// Port A drives the pager (bank selection).
 		m_porta = data;
 		porta_update();
 	}
-	void riot_pa_bit_clear(uint8_t data) {
-		// 810 Port A Bit-Clear (0x48): write 1 to clear bit.
-		m_porta &= ~data;
-		porta_update();
-	}
-	void riot_pa_bit_set(uint8_t data) {
-		// 810 Port A Bit-Set (0x4C): write 1 to set bit.
-		m_porta |= data;
-		porta_update();
-	}
-	// RIOT Port B (0x41): keyboard matrix sense inputs.
-	uint8_t riot_pb_r() {
+	uint8_t iotimer_pb_r() {
 		// 4951B keyboard matrix (Fig 8-31), TRANSPOSED (counterclockwise):
 		//   U401 latch at 0x18 selects a ROW (one-hot, bit=1).
 		//   Port B reads the COLUMNS (active-high).
@@ -139,55 +130,14 @@ private:
 		if (portb != 0x00) logerror("hp4951b: PortB read row_bit=%d -> 0x%02X, pc=%04x\n", sel_bit, portb, m_maincpu->pc());
 		return portb;
 	}
-	void portc_update() {
-		// PC3 gates the U504 555 RST pin (high = beep).
-		m_beep->set_state(BIT(m_portc, 3));
-	}
-	// NSC810 device callbacks
-	void iotimer_pa_w(uint8_t data) {
-		// Port A drives the pager (bank selection).
-		m_porta = data;
-		porta_update();
-	}
-	uint8_t iotimer_pb_r() {
-		// Port B reads the keyboard matrix (same as riot_pb_r).
-		return riot_pb_r();
-	}
 	void iotimer_pc_w(uint8_t data) {
-		// Port C bit 3 gates the beeper.
-		m_portc = data;
-		portc_update();
-	}
-	uint8_t riot_pc_r() {
-		return m_portc;
-	}
-	void riot_pc_w(uint8_t data) {
-		// 810 Port C Data (0x42): direct write.
-		// PC1 (bit 1) falling edge (1→0) acks the RSTB latch.
+		// Port C: PC1 falling edge (1->0) acks the RSTB latch; PC3 gates beeper.
 		uint8_t old = m_portc;
 		m_portc = data;
 		if ((old & 0x02) && !(data & 0x02)) {
 			m_maincpu->set_input_line(NSC800_RSTB, CLEAR_LINE);
 			m_kbd_irq_asserted = false;
 		}
-		portc_update();
-	}
-	void riot_pc_bit_clear(uint8_t data) {
-		// 810 Port C Bit-Clear (0x4A): write 1 to clear bit.
-		// PC1 (bit 1) falling edge acks the RSTB latch.
-		uint8_t old = m_portc;
-		m_portc &= ~data;
-		if ((old & 0x02) && !(m_portc & 0x02)) {
-			logerror("hp4951b: PC1 ACK (clear), pc=%04x\\n", m_maincpu->pc());
-			m_maincpu->set_input_line(NSC800_RSTB, CLEAR_LINE);
-			m_kbd_irq_asserted = false;
-		}
-		portc_update();
-	}
-	void riot_pc_bit_set(uint8_t data) {
-		// 810 Port C Bit-Set (0x4E): write 1 to set bit.
-		// Setting PC1 does NOT ack; only the 1→0 transition does.
-		m_portc |= data;
 		portc_update();
 	}
 	uint8_t regs30_r(offs_t offset) { return m_regs30[offset & 0xf]; }
@@ -280,7 +230,6 @@ private:
 		}
 		return 0xFF;  // no key pressed
 	}
-	uint8_t riot_ddra_r() { return m_ddr_a; }
 	// POD (0x10-0x17) stub
 	uint8_t pod_r(offs_t offset) {
 		logerror("hp4951b: pod_r 0x%02X\n", 0x10 | (offset & 0x7));
@@ -307,28 +256,6 @@ private:
 		m_maincpu->set_input_line(NSC800_RSTA, CLEAR_LINE);
 		m_tick_latch = m_tick_count & 0x3f; // Latch bits 0-5 before reset
 		m_tick_count = 0;
-	}
-	void riot_ddra_w(uint8_t data) {
-		// Port A is used for banking (outputs). Firmware writes 0xFF normally,
-		// 0xF7 when entering Auto Conf (PA3 becomes input). Allow both.
-		if (data != 0xff && data != 0xf7)
-			logerror("hp4951b: DDR A = 0x%02X (unexpected, allowing)\n", data);
-		m_ddr_a = data;
-	}
-	uint8_t riot_ddrb_r() { return m_ddr_b; }
-	void riot_ddrb_w(uint8_t data) {
-		// Firmware uses Port B as all inputs (keyboard rows). Abort on anything else.
-		if (data != 0x00)
-			fatalerror("hp4951b: DDR B = 0x%02X not implemented (expected 0x00)\n", data);
-		m_ddr_b = data;
-	}
-	uint8_t riot_ddrc_r() { return m_ddr_c; }
-	void riot_ddrc_w(uint8_t data) {
-		// Firmware uses Port C = 0x2F (outputs: PC0,PC1,PC2,PC3,PC5; inputs: PC4,PC6,PC7).
-		// Abort on anything else.
-		if (data != 0x2f)
-			fatalerror("hp4951b: DDR C = 0x%02X not implemented (expected 0x2F)\n", data);
-		m_ddr_c = data;
 	}
 	uint8_t mdr_r() { return m_mdr; }
 	void mdr_w(uint8_t data) {
