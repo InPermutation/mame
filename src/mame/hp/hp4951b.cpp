@@ -910,10 +910,10 @@ void hp4951b_state::hp4951b(machine_config &config)
 	m_maincpu->set_addrmap(AS_IO, &hp4951b_state::io_map);
 
 	SCREEN(config, m_screen);
-	m_screen->set_raw(8_MHz_XTAL, 40 * 8, 0, 32 * 8, 18 * 14, 0, 16 * 14);
+	m_screen->set_raw(4.9152_MHz_XTAL, 40 * 8, 0, 32 * 8, 18 * 14, 0, 16 * 14);
 	m_screen->set_screen_update("crtc", FUNC(mc6845_device::screen_update));
 
-	MC6845(config, m_crtc, 8_MHz_XTAL / 8);
+	MC6845(config, m_crtc, 4.9152_MHz_XTAL / 8);
 	m_crtc->set_screen("screen");
 	m_crtc->set_show_border_area(false);
 	m_crtc->set_char_width(8);
