@@ -143,7 +143,7 @@ private:
 			uint8_t prev = m_tick_count;
 			m_tick_count++;
 			if (!(prev & 0x40) && (m_tick_count & 0x40)) {
-				m_maincpu->set_input_line(NSC800_RSTA, ASSERT_LINE);
+				m_maincpu->set_input_line(NSC800_RSTA, CLEAR_LINE);
 			}
 		}
 	}
@@ -260,7 +260,7 @@ private:
 		// Reset = NAND(IOdec#4, WRM\) active-low; OUT strobe triggers it
 		// U503 strobes U304 to latch the count BEFORE reset (double-buffered)
 		logerror("hp4951b: tick_w 0x20 = 0x%02X (ack + latch + reset)\n", data);
-		m_maincpu->set_input_line(NSC800_RSTA, CLEAR_LINE);
+		m_maincpu->set_input_line(NSC800_RSTA, ASSERT_LINE);
 		m_tick_latch = m_tick_count & 0x3f; // Latch bits 0-5 before reset
 		m_tick_count = 0;
 	}
@@ -782,7 +782,7 @@ void hp4951b_state::hp4951b(machine_config &config)
 	iotimer.portA_write_callback().set(FUNC(hp4951b_state::iotimer_pa_w));
 	iotimer.portB_read_callback().set(FUNC(hp4951b_state::iotimer_pb_r));
 	iotimer.portC_write_callback().set(FUNC(hp4951b_state::iotimer_pc_w));
-	iotimer.timer0_callback().set(FUNC(hp4951b_state::iotimer_t0_w));
+	iotimer.timer1_callback().set(FUNC(hp4951b_state::iotimer_t0_w));
 	MC6845(config, m_crtc, 4.9152_MHz_XTAL / 8);
 	m_crtc->set_screen("screen");
 	m_crtc->set_show_border_area(false);
