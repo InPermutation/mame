@@ -36,20 +36,18 @@ nsc810_device::nsc810_device(const machine_config &mconfig, const char *tag, dev
 	m_portA_w(*this),
 	m_portB_w(*this),
 	m_portC_w(*this),
-	m_timer_out(*this)
+	m_timer_out(*this),
+	m_timer_clock{clock, clock}
 {
 	std::fill(std::begin(m_timer), std::end(m_timer), nullptr);
 	std::fill(std::begin(m_timer_mode), std::end(m_timer_mode), 0);
 	std::fill(std::begin(m_timer_counter), std::end(m_timer_counter), 0);
 	std::fill(std::begin(m_timer_base), std::end(m_timer_base), 0);
 	std::fill(std::begin(m_timer_running), std::end(m_timer_running), false);
-	std::fill(std::begin(m_timer_clock), std::end(m_timer_clock), 0);
 }
 
 void nsc810_device::device_start()
 {
-	if (m_timer_clock[0] == 0) m_timer_clock[0] = clock();
-	if (m_timer_clock[1] == 0) m_timer_clock[1] = clock();
 	m_portA_w(0);
 	m_portB_w(0);
 	m_portC_w(0);
