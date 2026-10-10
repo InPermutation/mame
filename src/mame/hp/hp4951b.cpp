@@ -136,7 +136,7 @@ private:
 		}
 		portc_update();
 	}
-	void iotimer_t1_w(int state) {
+	void iotimer_t0_w(int state) {
 		// NSC810 Timer 0 OUT drives the U404 TIC CLOCK divider.
 		// Bit 6 rising (every 64 counts) asserts RSTA.
 		if (state == ASSERT_LINE) {
@@ -782,7 +782,7 @@ void hp4951b_state::hp4951b(machine_config &config)
 	iotimer.portA_write_callback().set(FUNC(hp4951b_state::iotimer_pa_w));
 	iotimer.portB_read_callback().set(FUNC(hp4951b_state::iotimer_pb_r));
 	iotimer.portC_write_callback().set(FUNC(hp4951b_state::iotimer_pc_w));
-	iotimer.timer1_callback().set(FUNC(hp4951b_state::iotimer_t1_w));
+	iotimer.timer0_callback().set(FUNC(hp4951b_state::iotimer_t0_w));
 	MC6845(config, m_crtc, 4.9152_MHz_XTAL / 8);
 	m_crtc->set_screen("screen");
 	m_crtc->set_show_border_area(false);
