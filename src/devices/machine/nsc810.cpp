@@ -48,6 +48,8 @@ nsc810_device::nsc810_device(const machine_config &mconfig, const char *tag, dev
 
 void nsc810_device::device_start()
 {
+	m_timer_clock[0] = clock();
+	m_timer_clock[1] = clock();
 	m_portA_w(0);
 	m_portB_w(0);
 	m_portC_w(0);

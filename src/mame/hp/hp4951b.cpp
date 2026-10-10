@@ -778,7 +778,7 @@ void hp4951b_state::hp4951b(machine_config &config)
 	BEEP(config, m_beep, 2630).add_route(ALL_OUTPUTS, "mono", 1.0); // U504 ICM7555 ~2.63kHz, gated by PC3
 	// NSC810 RIOT (4 MHz): Port A=pager, Port B=keyboard, Port C=buzzer
 	// Timer clocks: T0 drives TIC CLOCK (3840 Hz via divider)
-	nsc810_device &iotimer(NSC810(config, m_iotimer, 4_MHz_XTAL, 4_MHz_XTAL));
+	nsc810_device &iotimer(NSC810(config, m_iotimer, 4_MHz_XTAL));
 	iotimer.portA_write_callback().set(FUNC(hp4951b_state::iotimer_pa_w));
 	iotimer.portB_read_callback().set(FUNC(hp4951b_state::iotimer_pb_r));
 	iotimer.portC_write_callback().set(FUNC(hp4951b_state::iotimer_pc_w));
