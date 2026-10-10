@@ -300,7 +300,6 @@ void nsc810_device::write(offs_t offset, uint8_t data)
 			LOG("NSC810: Timer 0 Stop write %02x\n", tag(), data);
 			break;
 		case REG_TIMER0_START:
-			if ((m_timer_mode[0] & 0x07) != 0x00 && (m_timer_mode[0] & 0x07) != 0x07)
 			{
 				m_timer_running[0] = true;
 				if (m_timer_mode[0] & 0x10)
@@ -320,7 +319,6 @@ void nsc810_device::write(offs_t offset, uint8_t data)
 			LOG("NSC810: Timer 1 Stop write %02x\n", data);
 			break;
 		case REG_TIMER1_START:
-			if ((m_timer_mode[1] & 0x07) != 0x00 && (m_timer_mode[1] & 0x07) != 0x07)
 			{
 				m_timer_running[1] = true;
 				// no /64 prescaler on timer 1
