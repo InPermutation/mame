@@ -48,8 +48,8 @@ nsc810_device::nsc810_device(const machine_config &mconfig, const char *tag, dev
 
 void nsc810_device::device_start()
 {
-	m_timer_clock[0] = clock();
-	m_timer_clock[1] = clock();
+	if (m_timer_clock[0] == 0) m_timer_clock[0] = clock();
+	if (m_timer_clock[1] == 0) m_timer_clock[1] = clock();
 	m_portA_w(0);
 	m_portB_w(0);
 	m_portC_w(0);
@@ -193,17 +193,17 @@ void nsc810_device::write(offs_t offset, uint8_t data)
 		switch (offset & 0x1f)
 		{
 		case REG_PORTA:
-			m_portA_latch = data & ~m_ddrA;
+			m_portA_latch = data;
 			m_portA_w((0xff & ~m_ddrA) | (data & m_ddrA));
 			LOG("NSC810: Port A data write %02x\n", data);
 			break;
 		case REG_PORTB:
-			m_portB_latch = data & ~m_ddrB;
+			m_portB_latch = data;
 			m_portB_w((0xff & ~m_ddrB) | (data & m_ddrB));
 			LOG("NSC810: Port B data write %02x\n", data);
 			break;
 		case REG_PORTC:
-			m_portC_latch = data & ~m_ddrC;
+			m_portC_latch = data;
 			m_portC_w((0xff & ~m_ddrC) | (data & m_ddrC));
 			LOG("NSC810: Port C data write %02x\n", data);
 			break;
@@ -310,10 +310,10 @@ void nsc810_device::write(offs_t offset, uint8_t data)
 			{
 				m_timer_running[1] = true;
 				// no /64 prescaler on timer 1
-				if (m_timer_mode[0] & 0x08)
-					rate = m_timer_clock[0] / 2;
+				if (m_timer_mode[1] & 0x08)
+					rate = m_timer_clock[1] / 2;
 				else
-					rate = m_timer_clock[0];
+					rate = m_timer_clock[1];
 				m_timer[1]->adjust(attotime::zero, 0, attotime::from_hz(rate));
 			}
 			LOG("NSC810: Timer 1 Start write %02x\n", data);
