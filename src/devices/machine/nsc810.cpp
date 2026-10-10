@@ -44,7 +44,7 @@ nsc810_device::nsc810_device(const machine_config &mconfig, const char *tag, dev
 	std::fill(std::begin(m_timer_counter), std::end(m_timer_counter), 0);
 	std::fill(std::begin(m_timer_base), std::end(m_timer_base), 0);
 	std::fill(std::begin(m_timer_running), std::end(m_timer_running), false);
-	std::fill(std::begin(m_timer_output), std::end(m_timer_output), false);
+	std::fill(std::begin(m_timer_output), std::end(m_timer_output), true);
 	m_timer_start[0] = attotime::zero;
 	m_timer_start[1] = attotime::zero;
 	m_timer_rate[0] = 0;
@@ -93,8 +93,8 @@ void nsc810_device::device_reset()
 	m_timer_counter[1] = 0;
 	m_timer_running[0] = false;
 	m_timer_running[1] = false;
-	m_timer_output[0] = false;
-	m_timer_output[1] = false;
+	m_timer_output[0] = true;
+	m_timer_output[1] = true;
 	m_ramselect = false;
 }
 
