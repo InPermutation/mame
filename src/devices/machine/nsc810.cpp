@@ -158,7 +158,7 @@ uint8_t nsc810_device::read(offs_t offset)
 			res = m_timer_counter[1] & 0xff;
 			if ((m_timer_mode[1] & 0x07) == 0x01 || (m_timer_mode[1] & 0x07) == 0x02)
 			{
-				m_timer_out[1](0);
+				m_timer_out[1](CLEAR_LINE);
 				LOG("NSC810: Timer 1 output reset\n");
 			}
 			break;
@@ -166,7 +166,7 @@ uint8_t nsc810_device::read(offs_t offset)
 			res = m_timer_counter[1] >> 8;
 			if ((m_timer_mode[1] & 0x07) == 0x01 || (m_timer_mode[1] & 0x07) == 0x02)
 			{
-				m_timer_out[1](0);
+				m_timer_out[1](CLEAR_LINE);
 				LOG("NSC810: Timer 1 output reset\n");
 			}
 			break;
