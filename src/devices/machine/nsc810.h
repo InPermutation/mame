@@ -69,6 +69,7 @@ private:
 	uint16_t m_timer_base[2];
 	bool m_timer_running[2];
 	uint32_t m_timer_clock[2];
+	bool m_timer_output[2];
 	bool m_ramselect;
 
 	devcb_read8 m_portA_r;

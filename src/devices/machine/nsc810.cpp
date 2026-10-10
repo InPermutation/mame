@@ -44,6 +44,7 @@ nsc810_device::nsc810_device(const machine_config &mconfig, const char *tag, dev
 	std::fill(std::begin(m_timer_counter), std::end(m_timer_counter), 0);
 	std::fill(std::begin(m_timer_base), std::end(m_timer_base), 0);
 	std::fill(std::begin(m_timer_running), std::end(m_timer_running), false);
+	std::fill(std::begin(m_timer_output), std::end(m_timer_output), false);
 }
 
 void nsc810_device::device_start()
@@ -68,6 +69,7 @@ void nsc810_device::device_start()
 	save_item(NAME(m_timer_counter));
 	save_item(NAME(m_timer_base));
 	save_item(NAME(m_timer_running));
+	save_item(NAME(m_timer_output));
 	save_item(NAME(m_ramselect));
 }
 
@@ -86,6 +88,8 @@ void nsc810_device::device_reset()
 	m_timer_counter[1] = 0;
 	m_timer_running[0] = false;
 	m_timer_running[1] = false;
+	m_timer_output[0] = false;
+	m_timer_output[1] = false;
 	m_ramselect = false;
 }
 
@@ -93,13 +97,25 @@ template <int Timer>
 TIMER_CALLBACK_MEMBER(nsc810_device::timer_tick)
 {
 	m_timer_counter[Timer]--;
-	if ((m_timer_mode[Timer] & 0x07) == 0x01 || (m_timer_mode[Timer] & 0x07) == 0x02)
+	uint8_t mode = m_timer_mode[Timer] & 0x07;
+	if (mode == 0x01 || mode == 0x02)
 	{
 		if (m_timer_counter[Timer] == 0)
 		{
 			m_timer_out[Timer](ASSERT_LINE);
 			m_timer_counter[Timer] = m_timer_base[Timer];
 			LOG("NSC810: Timer %d output set\n", Timer);
+		}
+	}
+	else if (mode == 0x05)
+	{
+		// Square wave: toggle output on terminal count
+		if (m_timer_counter[Timer] == 0)
+		{
+			m_timer_output[Timer] = !m_timer_output[Timer];
+			m_timer_out[Timer](m_timer_output[Timer] ? ASSERT_LINE : CLEAR_LINE);
+			m_timer_counter[Timer] = m_timer_base[Timer];
+			LOG("NSC810: Timer %d square wave toggle\n", Timer);
 		}
 	}
 }
