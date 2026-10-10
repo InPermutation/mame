@@ -75,10 +75,6 @@ private:
 	void mem_map(address_map &map);
 	void io_map(address_map &map);
 	void kbd_latch_w(uint8_t data);
-	void crtc_address_w(uint8_t data);
-	void crtc_register_w(uint8_t data);
-	uint8_t crtc_register_r();
-	uint8_t crtc_status_r();
 
 
 	void pager_w(uint8_t data);
@@ -353,10 +349,6 @@ void hp4951b_state::kbd_latch_w(uint8_t data) {
 		m_maincpu->set_input_line(NSC800_RSTB, ASSERT_LINE);
 	}
 }
-void hp4951b_state::crtc_address_w(uint8_t data) { m_crtc->address_w(data); }
-void hp4951b_state::crtc_register_w(uint8_t data) { m_crtc->register_w(data); }
-uint8_t hp4951b_state::crtc_register_r() { return m_crtc->register_r(); }
-uint8_t hp4951b_state::crtc_status_r() { return m_crtc->register_r(); }
 
 void hp4951b_state::io_map(address_map &map)
 {
@@ -395,9 +387,9 @@ void hp4951b_state::io_map(address_map &map)
 	map(0x18, 0x1f).w(FUNC(hp4951b_state::kbd_latch_w));
 
 	// C/S CRTC (0x08-0x0F, A10 mirror)
-	map(0x08, 0x08).mirror(0x04).w(FUNC(hp4951b_state::crtc_address_w));
-	map(0x09, 0x09).mirror(0x04).rw(FUNC(hp4951b_state::crtc_register_r), FUNC(hp4951b_state::crtc_register_w));
-	map(0x0b, 0x0b).mirror(0x04).r(FUNC(hp4951b_state::crtc_status_r));
+	map(0x08, 0x08).mirror(0x04).w(m_crtc, FUNC(mc6845_device::address_w));
+	map(0x09, 0x09).mirror(0x04).rw(m_crtc, FUNC(mc6845_device::register_r), FUNC(mc6845_device::register_w));
+	map(0x0b, 0x0b).mirror(0x04).r(m_crtc, FUNC(mc6845_device::status_r));
 }
 
 
