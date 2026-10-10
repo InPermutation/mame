@@ -140,6 +140,17 @@ private:
 		}
 		portc_update();
 	}
+	void iotimer_t0_w(int state) {
+		// NSC810 Timer 0 OUT drives the U404 TIC CLOCK divider.
+		// Bit 6 rising (every 64 counts) asserts RSTA.
+		if (state == ASSERT_LINE) {
+			uint8_t prev = m_tick_count;
+			m_tick_count++;
+			if (!(prev & 0x40) && (m_tick_count & 0x40)) {
+				m_maincpu->set_input_line(NSC800_RSTA, ASSERT_LINE);
+			}
+		}
+	}
 	uint8_t regs30_r(offs_t offset) { return m_regs30[offset & 0xf]; }
 	void regs30_w(offs_t offset, uint8_t data) { m_regs30[offset & 0xf] = data; }
 	// Z8530 ACIA stub (DLC) at 0x30-0x33
@@ -464,7 +475,6 @@ void hp4951b_state::io_map(address_map &map)
 	// RIOT (0x40-0x7F) - specific registers
 	// RIOT (NSC810) at 0x40-0x5F: device handles registers, callbacks hook pager/keyboard/buzzer
 	map(0x40, 0x5f).rw(m_iotimer, FUNC(nsc810_device::read), FUNC(nsc810_device::write));
-	map(0x50, 0x59).rw(FUNC(hp4951b_state::timer_r), FUNC(hp4951b_state::timer_w));
 
 	// X6 ACIA (0x30-0x37)
 	map(0x30, 0x33).rw(FUNC(hp4951b_state::acia_r), FUNC(hp4951b_state::acia_w));
@@ -876,6 +886,7 @@ void hp4951b_state::hp4951b(machine_config &config)
 	iotimer.portA_write_callback().set(FUNC(hp4951b_state::iotimer_pa_w));
 	iotimer.portB_read_callback().set(FUNC(hp4951b_state::iotimer_pb_r));
 	iotimer.portC_write_callback().set(FUNC(hp4951b_state::iotimer_pc_w));
+	iotimer.timer0_callback().set(FUNC(hp4951b_state::iotimer_t0_w));
 	MC6845(config, m_crtc, 4.9152_MHz_XTAL / 8);
 	m_crtc->set_screen("screen");
 	m_crtc->set_show_border_area(false);
