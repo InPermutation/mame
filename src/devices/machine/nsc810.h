@@ -26,8 +26,6 @@ public:
 	nsc810_device(const machine_config &mconfig, const char *tag, device_t *owner, T &&clk0, U &&clk1)
 		: nsc810_device(mconfig, tag, owner, 0, clock_value(std::forward<T>(clk0)), clock_value(std::forward<U>(clk1)))
 	{
-		set_timer0_clock(clock_value(std::forward<T>(clk0)));
-		set_timer1_clock(clock_value(std::forward<U>(clk1)));
 	}
 	static uint32_t clock_value(uint32_t v) { return v; }
 	static uint32_t clock_value(const XTAL &v) { return v.value(); }
