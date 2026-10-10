@@ -280,74 +280,7 @@ private:
 			fatalerror("hp4951b: MDR mode %d not implemented (MDR=0x%02X)\n", (data & 0x07), data);
 		m_mdr = data;
 	}
-	uint8_t timer_r(offs_t offset) {
-		switch (offset & 0xf) {
-			case 0x0: return (m_timer0_count >> 8) & 0xff; // Timer 0 High (current)
-			case 0x1: return m_timer0_count & 0xff;        // Timer 0 Low
-			case 0x2: return m_timer1_count & 0xff;        // Timer 1 Low
-			case 0x3: return (m_timer1_count >> 8) & 0xff; // Timer 1 High
-			case 0x8: return m_timer0_mode;
-			case 0x9: return m_timer1_mode;
-			default: return 0xff;
-		}
-	}
-	void timer_w(offs_t offset, uint8_t data) {
-		logerror("hp4951b: timer_w 0x%02X = 0x%02X\n", 0x50 | (offset & 0xf), data);
-		switch (offset & 0xf) {
-			case 0x0: m_timer0_load = (m_timer0_load & 0x00ff) | (data << 8); break;
-			case 0x1: m_timer0_load = (m_timer0_load & 0xff00) | data; break;
-			case 0x2: m_timer1_load = (m_timer1_load & 0xff00) | data; break;
-			case 0x3: m_timer1_load = (m_timer1_load & 0x00ff) | (data << 8); break;
-			case 0x4: m_timer0_running = false; m_timer0->adjust(attotime::never); break; // STOP Timer 0
-			case 0x5: m_timer0_running = true; m_timer0_count = m_timer0_load; start_timer0(); break;
-			case 0x6: m_timer1_running = false; m_timer1->adjust(attotime::never); break; // STOP Timer 1
-			case 0x7: m_timer1_running = true; m_timer1_count = m_timer1_load; start_timer1(); break;
-			case 0x8: m_timer0_mode = data; break;
-			case 0x9: m_timer1_mode = data; break;
-			default: break;
-		}
-	}
-	void start_timer0() {
-		// We only model Square Wave mode (bits 2-0 = 101). Abort on anything else.
-		if ((m_timer0_mode & 0x07) != 0x05)
-			fatalerror("hp4951b: timer0 mode bits 0x%02X not implemented (expected 0x05)\n", m_timer0_mode & 0x07);
-		if (m_timer0_running) {
-			// T0 OUT clocks the U404 TIC CLOCK counter. For 60Hz RSTA
-			// (every 64 counts), T0 OUT runs at 60*64 = 3840Hz.
-			// TODO: calculate from load value and prescale
-			m_timer0->adjust(attotime::from_hz(3840), 0, attotime::from_hz(3840));
-		}
-	}
-	void start_timer1() {
-		// We only model Square Wave mode (bits 2-0 = 101). Abort on anything else.
-		if ((m_timer1_mode & 0x07) != 0x05)
-			fatalerror("hp4951b: timer1 mode bits 0x%02X not implemented (expected 0x05)\n", m_timer1_mode & 0x07);
-		if (m_timer1_running) {
-			m_timer1->adjust(attotime::from_hz(60), 0, attotime::from_hz(60));
-		}
-	}
 	TIMER_CALLBACK_MEMBER(poweron_reset_tick);
-	TIMER_CALLBACK_MEMBER(timer0_tick) {
-		// T0 OUT clocks the U404 TIC CLOCK counter (one count per T0 OUT).
-		// Bit 6 rising (every 64 counts) -> RSTA via NOR.
-		// U404 only advances while Timer 0 runs, so RSTA cannot fire before
-		// the firmware starts Timer 0 (after the vector is installed).
-		uint8_t prev = m_tick_count;
-		m_tick_count++;
-		if (!(prev & 0x40) && (m_tick_count & 0x40)) {
-			logerror("hp4951b: RSTA ASSERT (tick, count=0x%02X)\n", m_tick_count);
-			m_maincpu->set_input_line(NSC800_RSTA, ASSERT_LINE);
-		}
-		// Note: m_tick_latch does NOT update here. U503 holds the latch steady
-		// until CPU acks (OUT 0x20), which strobes U304 to capture the count.
-	}
-	TIMER_CALLBACK_MEMBER(timer1_tick) {
-		// Timer 1 OUT -> U503 R\ (active-low) -> Q=0 -> RSTC\=0 (active)
-		// Resetting the flip-flop ASSERTS RSTC (active-low interrupt)
-		logerror("hp4951b: RSTC ASSERT (timer1 T1 OUT -> R\\)\n");
-		m_maincpu->set_input_line(NSC800_RSTC, ASSERT_LINE);
-		m_maincpu->set_input_line(NSC800_RSTC, CLEAR_LINE);
-	}
 	MC6845_UPDATE_ROW(crtc_update_row);
 
 	required_device<nsc800_device> m_maincpu;
@@ -370,16 +303,6 @@ private:
 	std::unique_ptr<uint8_t[]> m_bankram;
 	std::unique_ptr<uint8_t[]> m_winram;
 	uint8_t m_regs30[16] = { 0 };
-	uint16_t m_timer0_load = 0;
-	uint16_t m_timer1_load = 0;
-	uint16_t m_timer0_count = 0;
-	uint16_t m_timer1_count = 0;
-	uint8_t m_timer0_mode = 0;
-	uint8_t m_timer1_mode = 0;
-	bool m_timer0_running = false;
-	bool m_timer1_running = false;
-	emu_timer *m_timer0 = nullptr;
-	emu_timer *m_timer1 = nullptr;
 	uint8_t m_ddr_a = 0;
 	uint8_t m_ddr_b = 0;
 	uint8_t m_ddr_c = 0;
@@ -734,8 +657,6 @@ void hp4951b_state::machine_start()
 	memset(m_bankram.get(), 0, 0x8000);
 
 	// Allocate RIOT timers (must be done here, not at runtime)
-	m_timer0 = timer_alloc(FUNC(hp4951b_state::timer0_tick), this);
-	m_timer1 = timer_alloc(FUNC(hp4951b_state::timer1_tick), this);
 
 	// 0x8000 bank now uses explicit handlers (bank_r/bank_w) with m_bankstate,
 	// not MAME's memory_bank. m_bankstate defaults to 0 (RAM).
