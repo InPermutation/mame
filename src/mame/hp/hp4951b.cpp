@@ -268,18 +268,6 @@ private:
 		m_tick_latch = m_tick_count & 0x3f; // Latch bits 0-5 before reset
 		m_tick_count = 0;
 	}
-	uint8_t mdr_r() { return m_mdr; }
-	void mdr_w(uint8_t data) {
-		// MDR mode encoding (not binary):
-		// 0bxxxxxxx0 = MODE 0 (basic I/O)
-		// 0bxxxxxx01 = MODE 1
-		// 0bxxxxx011 = MODE 2
-		// 0bxxxxx111 = MODE 3
-		// We only implement MODE 0. Abort if firmware tries another mode.
-		if (data & 0x01)
-			fatalerror("hp4951b: MDR mode %d not implemented (MDR=0x%02X)\n", (data & 0x07), data);
-		m_mdr = data;
-	}
 	TIMER_CALLBACK_MEMBER(poweron_reset_tick);
 	MC6845_UPDATE_ROW(crtc_update_row);
 
@@ -303,10 +291,6 @@ private:
 	std::unique_ptr<uint8_t[]> m_bankram;
 	std::unique_ptr<uint8_t[]> m_winram;
 	uint8_t m_regs30[16] = { 0 };
-	uint8_t m_ddr_a = 0;
-	uint8_t m_ddr_b = 0;
-	uint8_t m_ddr_c = 0;
-	uint8_t m_mdr = 0;
 	uint8_t m_tick_count = 0;
 	uint8_t m_tick_latch = 0;
 	uint8_t m_acia_b_data = 0;
@@ -395,8 +379,7 @@ void hp4951b_state::io_map(address_map &map)
 	// 0xBB: unknown (in 0x80-0xBF range) - stub
 	map(0xbb, 0xbb).rw(FUNC(hp4951b_state::unkbb_r), FUNC(hp4951b_state::unkbb_w));
 
-	// RIOT (0x40-0x7F) - specific registers
-	// RIOT (NSC810) at 0x40-0x5F: device handles registers, callbacks hook pager/keyboard/buzzer
+	// RIOT (NSC810) (0x40-0x5F) - device handles registers, callbacks hook pager/keyboard/buzzer
 	map(0x40, 0x5f).rw(m_iotimer, FUNC(nsc810_device::read), FUNC(nsc810_device::write));
 
 	// X6 ACIA (0x30-0x37)
