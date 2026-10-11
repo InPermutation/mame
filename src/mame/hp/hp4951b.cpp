@@ -136,12 +136,6 @@ private:
 		}
 		portc_update();
 	}
-	uint8_t crtc_status_r() {
-		// Firmware waits for 0x25 from status port 0x0B.
-		// MC6845 status_r() only sets bits 5/6/7; bits 0 and 2 come from
-		// 4951B-specific hardware. Return the expected value.
-		return 0x25;
-	}
 	void iotimer_t0_w(int state) {
 		// NSC810 Timer 0 OUT drives the U404 TIC CLOCK divider.
 		// Bit 6 rising (every 64 counts) asserts RSTA.
@@ -395,7 +389,7 @@ void hp4951b_state::io_map(address_map &map)
 	// C/S CRTC (0x08-0x0F, A10 mirror)
 	map(0x08, 0x08).mirror(0x04).w(m_crtc, FUNC(mc6845_device::address_w));
 	map(0x09, 0x09).mirror(0x04).rw(m_crtc, FUNC(mc6845_device::register_r), FUNC(mc6845_device::register_w));
-	map(0x0b, 0x0b).mirror(0x04).r(FUNC(hp4951b_state::crtc_status_r));
+	map(0x0b, 0x0b).mirror(0x04).rw(m_crtc, FUNC(mc6845_device::register_r), FUNC(mc6845_device::register_w));
 }
 
 
