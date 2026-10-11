@@ -298,6 +298,7 @@ void nsc810_device::write(offs_t offset, uint8_t data)
 		case REG_TIMER0_STOP:
 			m_timer_running[0] = false;
 			m_timer[0]->reset();
+			m_timer_counter[0] = m_timer_base[0];
 			LOG("NSC810: Timer 0 Stop write %02x\n", tag(), data);
 			break;
 		case REG_TIMER0_START:
@@ -317,6 +318,7 @@ void nsc810_device::write(offs_t offset, uint8_t data)
 		case REG_TIMER1_STOP:
 			m_timer_running[1] = false;
 			m_timer[1]->reset();
+			m_timer_counter[1] = m_timer_base[1];
 			LOG("NSC810: Timer 1 Stop write %02x\n", data);
 			break;
 		case REG_TIMER1_START:
