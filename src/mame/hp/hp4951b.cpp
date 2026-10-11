@@ -388,8 +388,8 @@ void hp4951b_state::io_map(address_map &map)
 
 	// C/S CRTC (0x08-0x0F, A10 mirror)
 	map(0x08, 0x08).mirror(0x04).w(m_crtc, FUNC(mc6845_device::address_w));
-	map(0x09, 0x09).mirror(0x04).rw(m_crtc, FUNC(mc6845_device::register_r), FUNC(mc6845_device::register_w));
-	map(0x0b, 0x0b).mirror(0x04).rw(m_crtc, FUNC(mc6845_device::register_r), FUNC(mc6845_device::register_w));
+	map(0x09, 0x09).mirror(0x04).w(m_crtc, FUNC(mc6845_device::register_w));
+	map(0x0b, 0x0b).mirror(0x04).r(m_crtc, FUNC(mc6845_device::register_r));
 }
 
 
