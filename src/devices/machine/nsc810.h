@@ -54,7 +54,6 @@ protected:
 	virtual void device_reset() override ATTR_COLD;
 
 	template <int Timer> TIMER_CALLBACK_MEMBER(timer_tick);
-	uint16_t current_counter(int timer);
 
 private:
 	uint8_t m_portA_latch;
@@ -71,8 +70,6 @@ private:
 	bool m_timer_running[2];
 	uint32_t m_timer_clock[2];
 	bool m_timer_output[2];
-	attotime m_timer_start[2];
-	uint32_t m_timer_rate[2];
 	bool m_ramselect;
 
 	devcb_read8 m_portA_r;

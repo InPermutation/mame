@@ -45,10 +45,6 @@ nsc810_device::nsc810_device(const machine_config &mconfig, const char *tag, dev
 	std::fill(std::begin(m_timer_base), std::end(m_timer_base), 0);
 	std::fill(std::begin(m_timer_running), std::end(m_timer_running), false);
 	std::fill(std::begin(m_timer_output), std::end(m_timer_output), true);
-	m_timer_start[0] = attotime::zero;
-	m_timer_start[1] = attotime::zero;
-	m_timer_rate[0] = 0;
-	m_timer_rate[1] = 0;
 }
 
 void nsc810_device::device_start()
@@ -74,7 +70,7 @@ void nsc810_device::device_start()
 	save_item(NAME(m_timer_base));
 	save_item(NAME(m_timer_running));
 	save_item(NAME(m_timer_output));
-	save_item(NAME(m_timer_rate));
+
 	save_item(NAME(m_ramselect));
 }
 
@@ -125,18 +121,6 @@ TIMER_CALLBACK_MEMBER(nsc810_device::timer_tick)
 	}
 }
 
-uint16_t nsc810_device::current_counter(int timer)
-{
-	if (!m_timer_running[timer] || m_timer_rate[timer] == 0)
-		return m_timer_counter[timer];
-	attotime elapsed = machine().time() - m_timer_start[timer];
-	uint64_t ticks = elapsed.as_ticks(m_timer_rate[timer]);
-	uint16_t base = m_timer_base[timer];
-	if (base == 0) return 0;
-	uint16_t result = base - (ticks % (base + 1));
-	return result;
-}
-
 uint8_t nsc810_device::read(offs_t offset)
 {
 	uint8_t res = 0xff;
@@ -172,7 +156,7 @@ uint8_t nsc810_device::read(offs_t offset)
 			res = m_timer_mode[1];
 			break;
 		case REG_TIMER0_LOW:
-			res = current_counter(0) & 0xff;
+			res = m_timer_counter[0] & 0xff;
 			if ((m_timer_mode[0] & 0x07) == 0x01 || (m_timer_mode[0] & 0x07) == 0x02)
 			{
 				m_timer_out[0](CLEAR_LINE);
@@ -180,7 +164,7 @@ uint8_t nsc810_device::read(offs_t offset)
 			}
 			break;
 		case REG_TIMER0_HIGH:
-			res = current_counter(0) >> 8;
+			res = m_timer_counter[0] >> 8;
 			if ((m_timer_mode[0] & 0x07) == 0x01 || (m_timer_mode[0] & 0x07) == 0x02)
 			{
 				m_timer_out[0](CLEAR_LINE);
@@ -188,7 +172,7 @@ uint8_t nsc810_device::read(offs_t offset)
 			}
 			break;
 		case REG_TIMER1_LOW:
-			res = current_counter(1) & 0xff;
+			res = m_timer_counter[1] & 0xff;
 			if ((m_timer_mode[1] & 0x07) == 0x01 || (m_timer_mode[1] & 0x07) == 0x02)
 			{
 				m_timer_out[1](CLEAR_LINE);
@@ -196,7 +180,7 @@ uint8_t nsc810_device::read(offs_t offset)
 			}
 			break;
 		case REG_TIMER1_HIGH:
-			res = current_counter(1) >> 8;
+			res = m_timer_counter[1] >> 8;
 			if ((m_timer_mode[1] & 0x07) == 0x01 || (m_timer_mode[1] & 0x07) == 0x02)
 			{
 				m_timer_out[1](CLEAR_LINE);
@@ -312,7 +296,6 @@ void nsc810_device::write(offs_t offset, uint8_t data)
 			LOG("NSC810: Timer 1 high-byte write %02x (base=%04x)\n", data, m_timer_base[1]);
 			break;
 		case REG_TIMER0_STOP:
-			m_timer_counter[0] = current_counter(0);
 			m_timer_running[0] = false;
 			m_timer[0]->reset();
 			LOG("NSC810: Timer 0 Stop write %02x\n", tag(), data);
@@ -320,7 +303,6 @@ void nsc810_device::write(offs_t offset, uint8_t data)
 		case REG_TIMER0_START:
 			{
 				m_timer_running[0] = true;
-				m_timer_start[0] = machine().time();
 				if (m_timer_mode[0] & 0x10)
 					rate = m_timer_clock[0] / 64;
 				else
@@ -328,13 +310,11 @@ void nsc810_device::write(offs_t offset, uint8_t data)
 						rate = m_timer_clock[0] / 2;
 					else
 						rate = m_timer_clock[0];
-				m_timer_rate[0] = rate;
 				m_timer[0]->adjust(attotime::zero, 0, attotime::from_hz(rate));
 			}
 			LOG("NSC810: Timer 0 Start write %02x\n", data);
 			break;
 		case REG_TIMER1_STOP:
-			m_timer_counter[1] = current_counter(1);
 			m_timer_running[1] = false;
 			m_timer[1]->reset();
 			LOG("NSC810: Timer 1 Stop write %02x\n", data);
@@ -342,13 +322,11 @@ void nsc810_device::write(offs_t offset, uint8_t data)
 		case REG_TIMER1_START:
 			{
 				m_timer_running[1] = true;
-				m_timer_start[1] = machine().time();
 				// no /64 prescaler on timer 1
 				if (m_timer_mode[1] & 0x08)
 					rate = m_timer_clock[1] / 2;
 				else
 					rate = m_timer_clock[1];
-				m_timer_rate[1] = rate;
 				m_timer[1]->adjust(attotime::zero, 0, attotime::from_hz(rate));
 			}
 			LOG("NSC810: Timer 1 Start write %02x\n", data);
