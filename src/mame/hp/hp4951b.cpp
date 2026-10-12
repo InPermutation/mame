@@ -89,18 +89,13 @@ private:
 		// PA0+PA4 select 0x8000 bank, PA1/PA2/PA5/PA6 select 0x2000 window.
 		pager_w(m_porta);
 	}
-	// RIOT Port B: keyboard matrix sense inputs (via NSC810 device callback).
-	void portc_update() {
-		// PC3 gates the U504 555 RST pin (high = beep).
-		m_beep->set_state(BIT(m_portc, 3));
-	}
 	// NSC810 device callbacks
-	void iotimer_pa_w(uint8_t data) {
+	void riot_pa_w(uint8_t data) {
 		// Port A drives the pager (bank selection).
 		m_porta = data;
 		porta_update();
 	}
-	uint8_t iotimer_pb_r() {
+	uint8_t riot_pb_r() {
 		// 4951B keyboard matrix (Fig 8-31), TRANSPOSED (counterclockwise):
 		//   U401 latch at 0x18 selects a ROW (one-hot, bit=1).
 		//   Port B reads the COLUMNS (active-high).
@@ -126,8 +121,13 @@ private:
 		if (portb != 0x00) logerror("hp4951b: PortB read row_bit=%d -> 0x%02X, pc=%04x\n", sel_bit, portb, m_maincpu->pc());
 		return portb;
 	}
-	void iotimer_pc_w(uint8_t data) {
-		// Port C: PC1 falling edge (1->0) acks the RSTB latch; PC3 gates beeper.
+	void portc_update() {
+		// PC3 gates the U504 555 RST pin (high = beep).
+		m_beep->set_state(BIT(m_portc, 3));
+	}
+	void riot_pc_w(uint8_t data) {
+		// Port C:
+		// PC1 falling edge (1->0) acks the RSTB latch; PC3 gates beeper.
 		uint8_t old = m_portc;
 		m_portc = data;
 		if ((old & 0x02) && !(data & 0x02)) {
@@ -135,17 +135,6 @@ private:
 			m_kbd_irq_asserted = false;
 		}
 		portc_update();
-	}
-	void iotimer_t0_w(int state) {
-		// NSC810 Timer 0 OUT drives the U404 TIC CLOCK divider.
-		// Bit 6 rising (every 64 counts) asserts RSTA.
-		if (state == ASSERT_LINE) {
-			uint8_t prev = m_tick_count;
-			m_tick_count++;
-			if (!(prev & 0x40) && (m_tick_count & 0x40)) {
-				m_maincpu->set_input_line(NSC800_RSTA, ASSERT_LINE);
-			}
-		}
 	}
 	uint8_t regs30_r(offs_t offset) { return m_regs30[offset & 0xf]; }
 	void regs30_w(offs_t offset, uint8_t data) { m_regs30[offset & 0xf] = data; }
@@ -265,6 +254,16 @@ private:
 		m_tick_count = 0;
 	}
 	TIMER_CALLBACK_MEMBER(poweron_reset_tick);
+	void riot_t0_w(int state) {
+		// NSC810 Timer 0 OUT drives the U404 TIC CLOCK divider.
+		// Bit 6 rising (every 64 counts) asserts RSTA.
+		if (state != ASSERT_LINE) return;
+		uint8_t prev = m_tick_count;
+		m_tick_count++;
+		if (!(prev & 0x40) && (m_tick_count & 0x40)) {
+			m_maincpu->set_input_line(NSC800_RSTA, ASSERT_LINE);
+		}
+	}
 	MC6845_UPDATE_ROW(crtc_update_row);
 
 	required_device<nsc800_device> m_maincpu;
@@ -633,8 +632,6 @@ void hp4951b_state::machine_start()
 	m_bankram = std::make_unique<uint8_t[]>(0x8000);
 	memset(m_bankram.get(), 0, 0x8000);
 
-	// Allocate RIOT timers (must be done at machine_start, not runtime)
-
 	// 0x8000 bank now uses explicit handlers (bank_r/bank_w) with m_bankstate,
 	// not MAME's memory_bank. m_bankstate defaults to 0 (RAM).
 
@@ -781,10 +778,10 @@ void hp4951b_state::hp4951b(machine_config &config)
 	// NSC810 RIOT (4 MHz): Port A=pager, Port B=keyboard, Port C=buzzer
 	// Timer clocks: T0 drives TIC CLOCK
 	nsc810_device &iotimer(NSC810(config, m_iotimer, 4_MHz_XTAL));
-	iotimer.portA_write_callback().set(FUNC(hp4951b_state::iotimer_pa_w));
-	iotimer.portB_read_callback().set(FUNC(hp4951b_state::iotimer_pb_r));
-	iotimer.portC_write_callback().set(FUNC(hp4951b_state::iotimer_pc_w));
-	iotimer.timer0_callback().set(FUNC(hp4951b_state::iotimer_t0_w));
+	iotimer.portA_write_callback().set(FUNC(hp4951b_state::riot_pa_w));
+	iotimer.portB_read_callback().set(FUNC(hp4951b_state::riot_pb_r));
+	iotimer.portC_write_callback().set(FUNC(hp4951b_state::riot_pc_w));
+	iotimer.timer0_callback().set(FUNC(hp4951b_state::riot_t0_w));
 	MC6845(config, m_crtc, 4.9152_MHz_XTAL / 8);
 	m_crtc->set_screen("screen");
 	m_crtc->set_show_border_area(false);
