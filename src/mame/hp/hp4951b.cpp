@@ -673,7 +673,7 @@ void hp4951b_state::machine_reset()
 	// RIOT RESET (pin 4): clears the RSTB latch. Prevents boot-loop when
 	// a softkey is held through reset.
 	m_kbd_irq_asserted = false;
-	m_maincpu->set_input_line(NSC800_RSTB, ASSERT_LINE);
+	m_maincpu->set_input_line(NSC800_RSTB, CLEAR_LINE);
 	m_kbd_matrix_latch = 0x00; // No columns selected (bit=1 selects in CPU value)
 	logerror("machine_reset!\n");
 }
