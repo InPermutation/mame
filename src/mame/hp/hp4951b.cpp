@@ -629,9 +629,9 @@ TIMER_CALLBACK_MEMBER(hp4951b_state::poweron_reset_tick)
 void hp4951b_state::machine_start()
 {
 	m_tic_timer = timer_alloc(FUNC(hp4951b_state::tic_tick), this);
-	// Delay TIC CLOCK start until after POST (2 sec) to avoid RSTA firing
+	// Delay TIC CLOCK start until after diagnostics (12 sec) to avoid RSTA firing
 	// before the interrupt vector is installed (which causes bootloop).
-	m_tic_timer->adjust(attotime::from_seconds(2), 0, attotime::from_hz(3840));
+	m_tic_timer->adjust(attotime::from_seconds(12), 0, attotime::from_hz(3840));
 	save_item(NAME(m_tick_count));
 	// At power-on, the NSC810 Port C is tristate; R503 pull-up holds the
 	// U504 555 RST pin high, so the beeper sounds until the CPU takes over.
