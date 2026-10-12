@@ -794,7 +794,8 @@ void hp4951b_state::hp4951b(machine_config &config)
 	iotimer.portA_write_callback().set(FUNC(hp4951b_state::iotimer_pa_w));
 	iotimer.portB_read_callback().set(FUNC(hp4951b_state::iotimer_pb_r));
 	iotimer.portC_write_callback().set(FUNC(hp4951b_state::iotimer_pc_w));
-	iotimer.timer0_callback().set(FUNC(hp4951b_state::iotimer_t0_w));
+	// 810 Timer 0 not used for TIC CLOCK (firmware never programs it).
+	// The free-running m_tic_timer drives iotimer_t0_w directly.
 	MC6845(config, m_crtc, 4.9152_MHz_XTAL / 8);
 	m_crtc->set_screen("screen");
 	m_crtc->set_show_border_area(false);
