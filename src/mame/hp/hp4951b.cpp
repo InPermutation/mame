@@ -111,19 +111,19 @@ private:
 		int sel_bit = -1;
 		for (int b = 0; b < 8; b++) {
 			if (latch & (1 << b)) {
-				if (sel_bit != -1) return 0x00;
+				if (sel_bit != -1) return 0xFF;
 				sel_bit = b;
 			}
 		}
-		if (sel_bit == -1) return 0x00;
+		if (sel_bit == -1) return 0xFF;  // no column selected
 		char tag[8];
 		snprintf(tag, sizeof(tag), "KEY%d", sel_bit);
 		uint8_t rowbits = ioport(tag)->read();
-		uint8_t portb = 0x00;
+		uint8_t portb = 0xFF;  // active-low: pull-ups, 0xFF = no keys
 		for (int c = 0; c < 8; c++) {
-			if (rowbits & (1 << c)) portb |= (1 << (7 - c));
+			if (rowbits & (1 << c)) portb &= ~(1 << (7 - c));
 		}
-		if (portb != 0x00) logerror("hp4951b: PortB read row_bit=%d -> 0x%02X, pc=%04x\n", sel_bit, portb, m_maincpu->pc());
+		if (portb != 0xFF) logerror("hp4951b: PortB read row_bit=%d -> 0x%02X, pc=%04x\n", sel_bit, portb, m_maincpu->pc());
 		return portb;
 	}
 	void iotimer_pc_w(uint8_t data) {
