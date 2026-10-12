@@ -143,7 +143,8 @@ private:
 			uint8_t prev = m_tick_count;
 			m_tick_count++;
 			if (!(prev & 0x40) && (m_tick_count & 0x40)) {
-				m_maincpu->set_input_line(NSC800_RSTA, ASSERT_LINE);
+				if (m_rsta_enabled)
+					m_maincpu->set_input_line(NSC800_RSTA, ASSERT_LINE);
 			}
 		}
 	}
@@ -288,8 +289,10 @@ private:
 	std::unique_ptr<uint8_t[]> m_winram;
 	uint8_t m_regs30[16] = { 0 };
 	uint8_t m_tick_count = 0;
+	bool m_rsta_enabled = false;  // Set 12s after boot, after POST
 	emu_timer *m_tic_timer = nullptr;
 	TIMER_CALLBACK_MEMBER(tic_tick);
+	TIMER_CALLBACK_MEMBER(rsta_enable_tick);
 	uint8_t m_tick_latch = 0;
 	uint8_t m_acia_b_data = 0;
 	uint8_t m_acia_a_data = 0;
@@ -613,6 +616,11 @@ MC6845_UPDATE_ROW(hp4951b_state::crtc_update_row)
 }
 
 
+TIMER_CALLBACK_MEMBER(hp4951b_state::rsta_enable_tick)
+{
+	m_rsta_enabled = true;
+}
+
 TIMER_CALLBACK_MEMBER(hp4951b_state::tic_tick)
 {
 	// Free-running TIC CLOCK for RSTA (keyboard scan).
@@ -631,7 +639,9 @@ void hp4951b_state::machine_start()
 	m_tic_timer = timer_alloc(FUNC(hp4951b_state::tic_tick), this);
 	// Delay TIC CLOCK start until after diagnostics (12 sec) to avoid RSTA firing
 	// before the interrupt vector is installed (which causes bootloop).
-	m_tic_timer->adjust(attotime::from_seconds(12), 0, attotime::from_hz(3840));
+	// TIC CLOCK now driven by 810 Timer 0 square wave (via timer0_callback),
+	// not the free-running m_tic_timer. RSTA gated until after POST (12s).
+	timer_alloc(FUNC(hp4951b_state::rsta_enable_tick), this)->adjust(attotime::from_seconds(12));
 	save_item(NAME(m_tick_count));
 	// At power-on, the NSC810 Port C is tristate; R503 pull-up holds the
 	// U504 555 RST pin high, so the beeper sounds until the CPU takes over.
@@ -796,8 +806,7 @@ void hp4951b_state::hp4951b(machine_config &config)
 	iotimer.portA_write_callback().set(FUNC(hp4951b_state::iotimer_pa_w));
 	iotimer.portB_read_callback().set(FUNC(hp4951b_state::iotimer_pb_r));
 	iotimer.portC_write_callback().set(FUNC(hp4951b_state::iotimer_pc_w));
-	// 810 Timer 0 not used for TIC CLOCK (firmware never programs it).
-	// The free-running m_tic_timer drives iotimer_t0_w directly.
+	iotimer.timer0_callback().set(FUNC(hp4951b_state::iotimer_t0_w));
 	MC6845(config, m_crtc, 4.9152_MHz_XTAL / 8);
 	m_crtc->set_screen("screen");
 	m_crtc->set_show_border_area(false);
