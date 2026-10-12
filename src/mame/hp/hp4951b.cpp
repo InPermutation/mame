@@ -143,8 +143,7 @@ private:
 			uint8_t prev = m_tick_count;
 			m_tick_count++;
 			if (!(prev & 0x40) && (m_tick_count & 0x40)) {
-				if (m_rsta_enabled)
-					m_maincpu->set_input_line(NSC800_RSTA, ASSERT_LINE);
+				m_maincpu->set_input_line(NSC800_RSTA, ASSERT_LINE);
 			}
 		}
 	}
@@ -289,10 +288,6 @@ private:
 	std::unique_ptr<uint8_t[]> m_winram;
 	uint8_t m_regs30[16] = { 0 };
 	uint8_t m_tick_count = 0;
-	bool m_rsta_enabled = false;  // Set 12s after boot, after POST
-	emu_timer *m_tic_timer = nullptr;
-	TIMER_CALLBACK_MEMBER(tic_tick);
-	TIMER_CALLBACK_MEMBER(rsta_enable_tick);
 	uint8_t m_tick_latch = 0;
 	uint8_t m_acia_b_data = 0;
 	uint8_t m_acia_a_data = 0;
@@ -616,18 +611,6 @@ MC6845_UPDATE_ROW(hp4951b_state::crtc_update_row)
 }
 
 
-TIMER_CALLBACK_MEMBER(hp4951b_state::rsta_enable_tick)
-{
-	m_rsta_enabled = true;
-}
-
-TIMER_CALLBACK_MEMBER(hp4951b_state::tic_tick)
-{
-	// Free-running TIC CLOCK for RSTA (keyboard scan).
-	// 3840 Hz: 60 Hz RSTA via U404 /64 divider.
-	iotimer_t0_w(ASSERT_LINE);
-}
-
 TIMER_CALLBACK_MEMBER(hp4951b_state::poweron_reset_tick)
 {
 	// Release CPU from power-on reset; firmware will silence the beeper.
@@ -636,12 +619,7 @@ TIMER_CALLBACK_MEMBER(hp4951b_state::poweron_reset_tick)
 
 void hp4951b_state::machine_start()
 {
-	m_tic_timer = timer_alloc(FUNC(hp4951b_state::tic_tick), this);
-	// Delay TIC CLOCK start until after diagnostics (12 sec) to avoid RSTA firing
-	// before the interrupt vector is installed (which causes bootloop).
-	// TIC CLOCK now driven by 810 Timer 0 square wave (via timer0_callback),
-	// not the free-running m_tic_timer. RSTA gated until after POST (12s).
-	timer_alloc(FUNC(hp4951b_state::rsta_enable_tick), this)->adjust(attotime::from_seconds(12));
+	// TIC CLOCK driven by 810 Timer 0 square wave (via timer0_callback).
 	save_item(NAME(m_tick_count));
 	// At power-on, the NSC810 Port C is tristate; R503 pull-up holds the
 	// U504 555 RST pin high, so the beeper sounds until the CPU takes over.
@@ -655,7 +633,7 @@ void hp4951b_state::machine_start()
 	m_bankram = std::make_unique<uint8_t[]>(0x8000);
 	memset(m_bankram.get(), 0, 0x8000);
 
-	// Allocate RIOT timers (must be done here, not at runtime)
+	// Allocate RIOT timers (must be done at machine_start, not runtime)
 
 	// 0x8000 bank now uses explicit handlers (bank_r/bank_w) with m_bankstate,
 	// not MAME's memory_bank. m_bankstate defaults to 0 (RAM).
@@ -801,7 +779,7 @@ void hp4951b_state::hp4951b(machine_config &config)
 	SPEAKER(config, "mono").front_center();
 	BEEP(config, m_beep, 2630).add_route(ALL_OUTPUTS, "mono", 1.0); // U504 ICM7555 ~2.63kHz, gated by PC3
 	// NSC810 RIOT (4 MHz): Port A=pager, Port B=keyboard, Port C=buzzer
-	// Timer clocks: T0 drives TIC CLOCK (3840 Hz via divider)
+	// Timer clocks: T0 drives TIC CLOCK
 	nsc810_device &iotimer(NSC810(config, m_iotimer, 4_MHz_XTAL));
 	iotimer.portA_write_callback().set(FUNC(hp4951b_state::iotimer_pa_w));
 	iotimer.portB_read_callback().set(FUNC(hp4951b_state::iotimer_pb_r));
