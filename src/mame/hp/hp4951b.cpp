@@ -131,7 +131,7 @@ private:
 		uint8_t old = m_portc;
 		m_portc = data;
 		if ((old & 0x02) && !(data & 0x02)) {
-			m_maincpu->set_input_line(NSC800_RSTB, ASSERT_LINE);
+			m_maincpu->set_input_line(NSC800_RSTB, CLEAR_LINE);
 			m_kbd_irq_asserted = false;
 		}
 		portc_update();
