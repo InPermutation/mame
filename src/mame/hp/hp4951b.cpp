@@ -42,6 +42,14 @@
 #include "video/mc6845.h"
 #include "machine/timer.h"
 #include "machine/nsc810.h"
+#include "machine/6850acia.h"
+#include "machine/mc14411.h"
+#include "bus/rs232/rs232.h"
+#include "bus/rs232/pty.h"
+#include "bus/rs232/terminal.h"
+#include "bus/rs232/loopback.h"
+#include "bus/rs232/null_modem.h"
+#include "bus/rs232/printer.h"
 #include "sound/beep.h"
 #include "speaker.h"
 
@@ -60,6 +68,9 @@ public:
 		m_screen(*this, "screen"),
 		m_beep(*this, "beeper"),
 		m_iotimer(*this, "iotimer"),
+		m_acia(*this, "acia"),
+		m_brg(*this, "brg"),
+		m_rs232(*this, "rs232"),
 		m_mainram(*this, "mainram"),
 		m_chargen(*this, "chargen")
 	{ }
@@ -138,36 +149,74 @@ private:
 	}
 	uint8_t regs30_r(offs_t offset) { return m_regs30[offset & 0xf]; }
 	void regs30_w(offs_t offset, uint8_t data) { m_regs30[offset & 0xf] = data; }
-	// Z8530 ACIA stub (DLC) at 0x30-0x33
-	// 0x30: Ch B control, 0x31: Ch A control, 0x32: Ch B data, 0x33: Ch A data
-	// DLC test does loopback: OUT data, IN data expects same byte back.
-	// Control reads return 0x44 (Tx buffer empty, DCD/CTS active = "healthy").
-	uint8_t acia_r(offs_t offset) {
-		uint8_t v;
-		switch (offset & 3) {
-			case 0: v = 0x44; break;  // B control: healthy status
-			case 1: v = 0x44; break;  // A control: healthy status
-			case 2: v = m_acia_b_data; break;  // B data: loopback
-			case 3: v = m_acia_a_data; break;  // A data: loopback
-			default: v = 0xff; break;
-		}
-		return v;
+	// REMOTE board (X6, 0x30-0x37): U208 baud latch + HD6350 ACIA + MC14411.
+	// U208 (0x30, write-only): bits 0-2 = U108 baud mux select,
+	//   bits 3-4 = MC14411 RSA/RSB, bit 5 = DTR,
+	//   bit 6 = U305: 0 = internal loopback, 1 = remote,
+	//   bit 7 = OUTPUT DISABLE (TXD/RTS\ drivers).
+	void u208_w(uint8_t data) {
+		logerror("hp4951b: u208_w = 0x%02X (baud latch)\n", data);
+		m_u208 = data;
+		m_brg->rate_select_w((data >> 3) & 0x03);  // RSA=bit3, RSB=bit4
+		// U108 mux inputs low->high: F10, F14, F11, F9, F8, F7, F5, F3.
+		// The MC14411 runs all outputs continuously; the mux selects one.
+		static const uint8_t fnum[8] = { 10, 14, 11, 9, 8, 7, 5, 3 };
+		m_selected_f = fnum[data & 7];
+		update_remote_mux();
 	}
-	// STUB: DLC POST test expectations (from 10024 POST at F91D-F947):
-	// - After OUT (0x30),0xBE, IN (0x32) must have bit2=1
-	// - After OUT (0x32),0x41, IN (0x32) must have bit3=1
-	// Real Z8530 behavior TBD; these mimic the observed hardware responses.
-	void acia_w(offs_t offset, uint8_t data) {
-		switch (offset & 3) {
-			case 0:
-				if (data == 0xBE) m_acia_b_data |= 0x04;
-				break;
-			case 2:
-				m_acia_b_data = (data == 0x41) ? (data | 0x08) : data;
-				break;
-			case 3: m_acia_a_data = data; break;
-			default: break;
+	// MC14411 F-outputs (via U108 mux) drive TXC and RXC together.
+	// Only the mux-selected F output is forwarded.
+	// RXC is processed before TXC: the receiver must sample the stable
+	// RXD bit before the transmitter advances TXD to the next bit.
+	template<int F> void brg_f_w(int state) {
+		if (F == m_selected_f) {
+			m_acia->write_rxc(state);
+			m_acia->write_txc(state);
 		}
+	}
+	// ACIA callbacks
+	void acia_txd_w(int state) { m_acia_txd = state; update_remote_mux(); }
+	void acia_rts_w(int state) { m_acia_rts = state; update_remote_mux(); }
+	void acia_irq_w(int state) {
+		// Callback is logical: 1 = interrupt pending. Drive the CPU's
+		// maskable IRQ line asserted accordingly (wire is active-low).
+		m_maincpu->set_input_line(INPUT_LINE_IRQ0, state ? ASSERT_LINE : CLEAR_LINE);
+	}
+	// Remote-connector side (rs232_port_device) callbacks
+	void rs232_rxd_w(int state) { m_rs232_rxd = state; update_remote_mux(); }
+	void rs232_cts_w(int state) { m_rs232_cts = state; update_remote_mux(); }
+	void rs232_dcd_w(int state) { m_rs232_dcd = state; update_remote_mux(); }
+	// U305 loopback mux + U204 output gating. Called whenever any side changes.
+	void update_remote_mux() {
+		// U305 G1: 0 = internal loopback (POST test), 1 = remote connector.
+		// Verified against firmware: the 10 baud-rate loopback tests use
+		// U208=0x87,0x8F,0x90-0x9F (bit6=0); 0x77 (bit6=1) is remote mode.
+		const bool loopback = !BIT(m_u208, 6);
+		const bool out_dis = BIT(m_u208, 7);   // 1 = TXD/RTS\ drivers disabled
+		// U208 bit 5 is DTR (active-low TTL). In loopback it drives DCD
+		// directly; the RS232 DTR pin follows the same active-low level.
+		const int dtr_l = BIT(m_u208, 5) ? 1 : 0;
+		if (loopback) {
+			m_acia->write_rxd(m_acia_txd);
+			m_acia->write_cts(m_acia_rts);
+			m_acia->write_dcd(dtr_l);
+		} else {
+			m_acia->write_rxd(m_rs232_rxd);
+			m_acia->write_cts(m_rs232_cts);
+			m_acia->write_dcd(m_rs232_dcd);
+		}
+		m_rs232->write_txd(out_dis ? 1 : m_acia_txd);
+		m_rs232->write_rts(out_dis ? 1 : m_acia_rts);
+		m_rs232->write_dtr(dtr_l);
+	}
+	// Minimal RS232 slot options: only devices without extra machine/CPU
+	// dependencies, so the tiny build doesn't drag in terminal emulators etc.
+	static void hp4951b_rs232_devices(device_slot_interface &device) {
+		device.option_add("pty", PSEUDO_TERMINAL);
+		device.option_add("terminal", SERIAL_TERMINAL);
+		device.option_add("loopback", RS232_LOOPBACK);
+		device.option_add("null_modem", NULL_MODEM);
+		device.option_add("printer", SERIAL_PRINTER);
 	}
 	// DLC (Z8530) at 0xC0-0xFF. Stub: loopback for POST.
 	uint8_t dlc_r(offs_t offset) {
@@ -271,6 +320,13 @@ private:
 	required_device<screen_device> m_screen;
 	required_device<beep_device> m_beep;
 	required_device<nsc810_device> m_iotimer;
+	required_device<acia6850_device> m_acia;
+	required_device<mc14411_device> m_brg;
+	required_device<rs232_port_device> m_rs232;
+	uint8_t m_u208 = 0;  // U208 baud/mux latch (REMOTE board)
+	int m_acia_txd = 1, m_acia_rts = 1;      // cached ACIA output levels
+	int m_rs232_rxd = 1, m_rs232_cts = 1, m_rs232_dcd = 1;  // cached remote-port inputs
+	int m_selected_f = 10;  // U108 mux-selected MC14411 F output (F10 default)
 	// 0x2000 window state: 0=RAM, 1=10023 JP table, 2=10024 JP table
 	uint8_t m_winstate = 0;
 	// 0x8000 bank state: 0=RAM, 1=10023, 2=10024, 3=10022
@@ -288,8 +344,6 @@ private:
 	uint8_t m_regs30[16] = { 0 };
 	uint8_t m_tick_count = 0;
 	uint8_t m_tick_latch = 0;
-	uint8_t m_acia_b_data = 0;
-	uint8_t m_acia_a_data = 0;
 	uint8_t m_dlc_a_data = 0;
 	uint8_t m_dlc_b_data = 0;
 };
@@ -373,9 +427,10 @@ void hp4951b_state::io_map(address_map &map)
 	// RIOT (NSC810) (0x40-0x5F) - device handles registers, callbacks hook pager/keyboard/buzzer
 	map(0x40, 0x5f).rw(m_iotimer, FUNC(nsc810_device::read), FUNC(nsc810_device::write));
 
-	// X6 ACIA (0x30-0x37)
-	map(0x30, 0x33).rw(FUNC(hp4951b_state::acia_r), FUNC(hp4951b_state::acia_w));
-	map(0x34, 0x37).rw(FUNC(hp4951b_state::regs30_r), FUNC(hp4951b_state::regs30_w));
+	// X6 REMOTE board: U208 baud latch (0x30-0x31, write-only, A2 mirror) +
+	// HD6350 ACIA (0x32=control/status, 0x33=data, A2 mirror)
+	map(0x30, 0x31).mirror(0x04).w(FUNC(hp4951b_state::u208_w));
+	map(0x32, 0x33).mirror(0x04).rw(m_acia, FUNC(acia6850_device::read), FUNC(acia6850_device::write));
 	map(0x39, 0x3f).rw(FUNC(hp4951b_state::regs30_r), FUNC(hp4951b_state::regs30_w));
 
 	// TIC CLOCK (0x20-0x27): U404 8-bit counter, U304 latch (bits 0-5)
@@ -660,6 +715,7 @@ void hp4951b_state::machine_reset()
 	m_kbd_irq_asserted = false;
 	m_maincpu->set_input_line(NSC800_RSTB, CLEAR_LINE);
 	m_kbd_matrix_latch = 0x00; // No columns selected (bit=1 selects in CPU value)
+	u208_w(0x00); // REMOTE board: baud X1, mux=F10, remote mode, outputs enabled
 	logerror("machine_reset!\n");
 }
 
@@ -782,6 +838,24 @@ void hp4951b_state::hp4951b(machine_config &config)
 	iotimer.portB_read_callback().set(FUNC(hp4951b_state::riot_pb_r));
 	iotimer.portC_write_callback().set(FUNC(hp4951b_state::riot_pc_w));
 	iotimer.timer0_callback().set(FUNC(hp4951b_state::riot_t0_w));
+	// REMOTE board: HD6350 ACIA + MC14411 bit-rate generator (1.8432 MHz)
+	ACIA6850(config, m_acia, 0);
+	m_acia->txd_handler().set(FUNC(hp4951b_state::acia_txd_w));
+	m_acia->rts_handler().set(FUNC(hp4951b_state::acia_rts_w));
+	m_acia->irq_handler().set(FUNC(hp4951b_state::acia_irq_w));
+	MC14411(config, m_brg, XTAL(1'843'200));
+	m_brg->out_f<3>().set(FUNC(hp4951b_state::brg_f_w<3>));
+	m_brg->out_f<5>().set(FUNC(hp4951b_state::brg_f_w<5>));
+	m_brg->out_f<7>().set(FUNC(hp4951b_state::brg_f_w<7>));
+	m_brg->out_f<8>().set(FUNC(hp4951b_state::brg_f_w<8>));
+	m_brg->out_f<9>().set(FUNC(hp4951b_state::brg_f_w<9>));
+	m_brg->out_f<10>().set(FUNC(hp4951b_state::brg_f_w<10>));
+	m_brg->out_f<11>().set(FUNC(hp4951b_state::brg_f_w<11>));
+	m_brg->out_f<14>().set(FUNC(hp4951b_state::brg_f_w<14>));
+	RS232_PORT(config, m_rs232, hp4951b_state::hp4951b_rs232_devices, "pty");
+	m_rs232->rxd_handler().set(FUNC(hp4951b_state::rs232_rxd_w));
+	m_rs232->cts_handler().set(FUNC(hp4951b_state::rs232_cts_w));
+	m_rs232->dcd_handler().set(FUNC(hp4951b_state::rs232_dcd_w));
 	MC6845(config, m_crtc, 4.9152_MHz_XTAL / 8);
 	m_crtc->set_screen("screen");
 	m_crtc->set_show_border_area(false);

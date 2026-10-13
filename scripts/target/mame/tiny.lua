@@ -26,6 +26,8 @@ CPUS["MCS48"] = true
 CPUS["MCS51"] = true
 CPUS["TMS9900"] = true
 CPUS["Z80"] = true
+CPUS["IE15"] = true
+CPUS["ADSP21XX"] = true
 
 --------------------------------------------------
 -- Specify all the sound cores necessary for the
@@ -54,6 +56,7 @@ SOUNDS["YM3812"] = true
 --------------------------------------------------
 
 VIDEOS["MC6845"] = true
+VIDEOS["SCN2674"] = true
 
 
 --------------------------------------------------
@@ -68,7 +71,19 @@ MACHINES["GEN_LATCH"] = true
 MACHINES["INPUT_MERGER"] = true
 MACHINES["ACIA6850"] = true
 MACHINES["MOS6530"] = true
+MACHINES["MC14411"] = true
 MACHINES["NSC810"] = true
+-- dep closure for BUSES["RS232"] (default_rs232_devices lives in rs232.o,
+-- so enabling the bus pulls every slot device's machine/CPU requirements)
+MACHINES["IE15"] = true
+MACHINES["INS8250"] = true
+MACHINES["MM5740"] = true
+MACHINES["S97801"] = true
+MACHINES["SCN_PCI"] = true
+MACHINES["SWTPC8212"] = true
+MACHINES["PCF8573"] = true
+MACHINES["Z80SIO"] = true
+MACHINES["VOTRAXTNT"] = true
 MACHINES["NETLIST"] = true
 MACHINES["OUTPUT_LATCH"] = true
 MACHINES["PIT8253"] = true
@@ -92,6 +107,10 @@ MACHINES["Z80PIO"] = true
 --------------------------------------------------
 
 BUSES["CENTRONICS"] = true
+BUSES["RS232"] = true
+-- dep closure for BUSES["RS232"] slot devices (h19 terminal, sun kbd adaptor)
+BUSES["HEATHZENITH_H19"] = true
+BUSES["SUNKBD"] = true
 
 
 --------------------------------------------------
