@@ -178,12 +178,11 @@ private:
 	void acia_txd_w(int state) { m_acia_txd = state; update_remote_mux(); }
 	void acia_rts_w(int state) { m_acia_rts = state; update_remote_mux(); }
 	void acia_irq_w(int state) {
-		// ACIA IRQ is wired via U503 synchronizer to INTR\, but the firmware
-		// polls the IRQ flag (bit 7) instead of using CPU interrupts.
-		// Asserting INTR\ here causes bootloops (the firmware doesn't expect
-		// it in slave mode), so we leave it disconnected for now.
-		// TODO: model U503 properly (sync flip-flop + firmware clear via
-		// I/O decoder bit 4 / WR\M).
+		// U503 top-half: D = INT\ (active-low, so D = !state).
+		// On CLK, Q follows D. Q drives INTR\ to the CPU (active-low).
+		// S\ (from tick_w/0x20) asynchronously sets Q=1 (acks the interrupt).
+		m_u503_q = !state;
+		m_maincpu->set_input_line(INPUT_LINE_IRQ0, m_u503_q ? CLEAR_LINE : ASSERT_LINE);
 	}
 	// Remote-connector side (rs232_port_device) callbacks
 	void rs232_rxd_w(int state) { m_rs232_rxd = state; update_remote_mux(); }
@@ -300,8 +299,12 @@ private:
 		// OUT (0x20) acks the tick clock AND resets the counters (U404)
 		// Reset = NAND(IOdec#4, WRM\) active-low; OUT strobe triggers it
 		// U503 strobes U304 to latch the count BEFORE reset (double-buffered)
+		// Also: I/O decoder bit 4 drives U503 S\ (active-low set), which
+		// sets Q=1, de-asserting INTR\ (firmware interrupt acknowledge).
 		logerror("hp4951b: tick_w 0x20 = 0x%02X (ack + latch + reset)\n", data);
 		m_maincpu->set_input_line(NSC800_RSTA, CLEAR_LINE);
+		m_u503_q = true;  // S\ asserts: Q=1, INTR\ high (inactive)
+		m_maincpu->set_input_line(INPUT_LINE_IRQ0, CLEAR_LINE);
 		m_tick_latch = m_tick_count & 0x3f; // Latch bits 0-5 before reset
 		m_tick_count = 0;
 	}
@@ -330,6 +333,7 @@ private:
 	int m_acia_txd = 1, m_acia_rts = 1;      // cached ACIA output levels
 	int m_rs232_rxd = 1, m_rs232_cts = 1, m_rs232_dcd = 1;  // cached remote-port inputs
 	int m_selected_f = 10;  // U108 mux-selected MC14411 F output (F10 default)
+	bool m_u503_q = true;   // U503 top-half FF Q: true = INTR\ high (inactive)
 	// 0x2000 window state: 0=RAM, 1=10023 JP table, 2=10024 JP table
 	uint8_t m_winstate = 0;
 	// 0x8000 bank state: 0=RAM, 1=10023, 2=10024, 3=10022
@@ -678,6 +682,7 @@ void hp4951b_state::machine_start()
 {
 	// TIC CLOCK driven by 810 Timer 0 square wave (via timer0_callback).
 	save_item(NAME(m_tick_count));
+	save_item(NAME(m_u503_q));
 	// At power-on, the NSC810 Port C is tristate; R503 pull-up holds the
 	// U504 555 RST pin high, so the beeper sounds until the CPU takes over.
 	m_beep->set_state(1);
