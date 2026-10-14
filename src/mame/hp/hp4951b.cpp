@@ -178,9 +178,12 @@ private:
 	void acia_txd_w(int state) { m_acia_txd = state; update_remote_mux(); }
 	void acia_rts_w(int state) { m_acia_rts = state; update_remote_mux(); }
 	void acia_irq_w(int state) {
-		// Callback is logical: 1 = interrupt pending. Drive the CPU's
-		// maskable IRQ line asserted accordingly (wire is active-low).
-		m_maincpu->set_input_line(INPUT_LINE_IRQ0, state ? ASSERT_LINE : CLEAR_LINE);
+		// ACIA IRQ is wired via U503 synchronizer to INTR\, but the firmware
+		// polls the IRQ flag (bit 7) instead of using CPU interrupts.
+		// Asserting INTR\ here causes bootloops (the firmware doesn't expect
+		// it in slave mode), so we leave it disconnected for now.
+		// TODO: model U503 properly (sync flip-flop + firmware clear via
+		// I/O decoder bit 4 / WR\M).
 	}
 	// Remote-connector side (rs232_port_device) callbacks
 	void rs232_rxd_w(int state) { m_rs232_rxd = state; update_remote_mux(); }
