@@ -179,10 +179,14 @@ private:
 	void acia_rts_w(int state) { m_acia_rts = state; update_remote_mux(); }
 	void acia_irq_w(int state) {
 		// U503 top-half: D = INT\ (active-low, so D = !state).
-		// On CLK, Q follows D. Q drives INTR\ to the CPU (active-low).
+		// On CLK, Q follows D. In hardware, Q drives INTR\ to the CPU.
 		// S\ (from tick_w/0x20) asynchronously sets Q=1 (acks the interrupt).
+		// HOWEVER: the firmware polls the ACIA IRQ flag (bit 7) instead of
+		// using CPU interrupts. Driving INTR\ causes bootloops because the
+		// IRQ ack vector (0x4C) is for the keyboard, not the ACIA.
+		// So we model the U503 state but do NOT drive the CPU line.
 		m_u503_q = !state;
-		m_maincpu->set_input_line(INPUT_LINE_IRQ0, m_u503_q ? CLEAR_LINE : ASSERT_LINE);
+		// m_maincpu->set_input_line(INPUT_LINE_IRQ0, m_u503_q ? CLEAR_LINE : ASSERT_LINE);
 	}
 	// Remote-connector side (rs232_port_device) callbacks
 	void rs232_rxd_w(int state) { m_rs232_rxd = state; update_remote_mux(); }
@@ -300,11 +304,11 @@ private:
 		// Reset = NAND(IOdec#4, WRM\) active-low; OUT strobe triggers it
 		// U503 strobes U304 to latch the count BEFORE reset (double-buffered)
 		// Also: I/O decoder bit 4 drives U503 S\ (active-low set), which
-		// sets Q=1, de-asserting INTR\ (firmware interrupt acknowledge).
+		// sets Q=1. In hardware this de-asserts INTR\, but we don't drive
+		// the CPU line (firmware polls, doesn't use interrupts).
 		logerror("hp4951b: tick_w 0x20 = 0x%02X (ack + latch + reset)\n", data);
 		m_maincpu->set_input_line(NSC800_RSTA, CLEAR_LINE);
-		m_u503_q = true;  // S\ asserts: Q=1, INTR\ high (inactive)
-		m_maincpu->set_input_line(INPUT_LINE_IRQ0, CLEAR_LINE);
+		m_u503_q = true;  // S\ asserts: Q=1
 		m_tick_latch = m_tick_count & 0x3f; // Latch bits 0-5 before reset
 		m_tick_count = 0;
 	}
