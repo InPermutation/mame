@@ -188,6 +188,9 @@ private:
 		m_u503_q = !state;
 		// m_maincpu->set_input_line(INPUT_LINE_IRQ0, m_u503_q ? CLEAR_LINE : ASSERT_LINE);
 	}
+	// ACIA read/write wrappers with logging
+	uint8_t acia_r(offs_t offset);
+	void acia_w(offs_t offset, uint8_t data);
 	// Remote-connector side (rs232_port_device) callbacks
 	void rs232_rxd_w(int state) { m_rs232_rxd = state; update_remote_mux(); }
 	void rs232_cts_w(int state) { m_rs232_cts = state; update_remote_mux(); }
@@ -360,6 +363,21 @@ private:
 };
 
 
+uint8_t hp4951b_state::acia_r(offs_t offset)
+{
+	uint8_t data = m_acia->read(offset);
+	if (offset == 0)
+		logerror("ACIA status read: %02X (RDRF=%d IRQ=%d)\n", data, (data & 0x01) != 0, (data & 0x80) != 0);
+	return data;
+}
+
+void hp4951b_state::acia_w(offs_t offset, uint8_t data)
+{
+	if (offset == 0)
+		logerror("ACIA control write: %02X (RX IRQ %s)\n", data, (data & 0x80) ? "ENABLED" : "disabled");
+	m_acia->write(offset, data);
+}
+
 void hp4951b_state::mem_map(address_map &map)
 {
 	map(0x0000, 0x1fff).rom().region("maincpu", 0);
@@ -441,7 +459,7 @@ void hp4951b_state::io_map(address_map &map)
 	// X6 REMOTE board: U208 baud latch (0x30-0x31, write-only, A2 mirror) +
 	// HD6350 ACIA (0x32=control/status, 0x33=data, A2 mirror)
 	map(0x30, 0x31).mirror(0x04).w(FUNC(hp4951b_state::u208_w));
-	map(0x32, 0x33).mirror(0x04).rw(m_acia, FUNC(acia6850_device::read), FUNC(acia6850_device::write));
+	map(0x32, 0x33).mirror(0x04).rw(FUNC(hp4951b_state::acia_r), FUNC(hp4951b_state::acia_w));
 	map(0x39, 0x3f).rw(FUNC(hp4951b_state::regs30_r), FUNC(hp4951b_state::regs30_w));
 
 	// TIC CLOCK (0x20-0x27): U404 8-bit counter, U304 latch (bits 0-5)
