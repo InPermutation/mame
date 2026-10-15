@@ -196,7 +196,7 @@ private:
 	uint8_t scc_cb_r(offs_t offset);
 	void scc_cb_w(offs_t offset, uint8_t data);
 	// IRQ acknowledge: SCC provides vector 0x40 via WR2 for ACIA interrupt
-	int irq_ack_cb();
+	int irq_ack_cb(device_t &device, int irqline);
 	// Remote-connector side (rs232_port_device) callbacks
 	void rs232_rxd_w(int state) { m_rs232_rxd = state; update_remote_mux(); }
 	void rs232_cts_w(int state) { m_rs232_cts = state; update_remote_mux(); }
@@ -407,7 +407,7 @@ void hp4951b_state::scc_cb_w(offs_t offset, uint8_t data)
 	m_scc->cb_w(offset, data);
 }
 
-int hp4951b_state::irq_ack_cb()
+int hp4951b_state::irq_ack_cb(device_t &device, int irqline)
 {
 	// SCC provides vector 0x40 (from WR2) for the ACIA interrupt via INTACK\
 	// The U503 drives INTR\, the SCC drives the vector byte on AD0-7.
