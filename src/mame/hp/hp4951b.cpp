@@ -183,12 +183,9 @@ private:
 		// U503 top-half: D = INT\ (active-low, so D = !state).
 		// On CLK, Q follows D. In hardware, Q drives INTR\ to the CPU.
 		// S\ (from tick_w/0x20) asynchronously sets Q=1 (acks the interrupt).
-		// HOWEVER: the firmware polls the ACIA IRQ flag (bit 7) instead of
-		// using CPU interrupts. Driving INTR\ causes bootloops because the
-		// IRQ ack vector (0x4C) is for the keyboard, not the ACIA.
-		// So we model the U503 state but do NOT drive the CPU line.
+		// The SCC provides the interrupt vector (0x40 via WR2) on INTACK\.
 		m_u503_q = !state;
-		// m_maincpu->set_input_line(INPUT_LINE_IRQ0, m_u503_q ? CLEAR_LINE : ASSERT_LINE);
+		m_maincpu->set_input_line(INPUT_LINE_IRQ0, m_u503_q ? CLEAR_LINE : ASSERT_LINE);
 	}
 	// ACIA read/write wrappers with logging
 	uint8_t acia_r(offs_t offset);
@@ -198,6 +195,8 @@ private:
 	void scc_ca_w(offs_t offset, uint8_t data);
 	uint8_t scc_cb_r(offs_t offset);
 	void scc_cb_w(offs_t offset, uint8_t data);
+	// IRQ acknowledge: SCC provides vector 0x40 via WR2 for ACIA interrupt
+	int irq_ack_cb();
 	// Remote-connector side (rs232_port_device) callbacks
 	void rs232_rxd_w(int state) { m_rs232_rxd = state; update_remote_mux(); }
 	void rs232_cts_w(int state) { m_rs232_cts = state; update_remote_mux(); }
@@ -406,6 +405,13 @@ void hp4951b_state::scc_cb_w(offs_t offset, uint8_t data)
 {
 	logerror("SCC B Ctrl write: %02X\n", data);
 	m_scc->cb_w(offset, data);
+}
+
+int hp4951b_state::irq_ack_cb()
+{
+	// SCC provides vector 0x40 (from WR2) for the ACIA interrupt via INTACK\
+	// The U503 drives INTR\, the SCC drives the vector byte on AD0-7.
+	return 0x40;
 }
 
 void hp4951b_state::mem_map(address_map &map)
@@ -890,6 +896,7 @@ void hp4951b_state::hp4951b(machine_config &config)
 	NSC800(config, m_maincpu, 4_MHz_XTAL);
 	m_maincpu->set_addrmap(AS_PROGRAM, &hp4951b_state::mem_map);
 	m_maincpu->set_addrmap(AS_IO, &hp4951b_state::io_map);
+	m_maincpu->set_irq_acknowledge_callback(FUNC(hp4951b_state::irq_ack_cb));
 
 	SCREEN(config, m_screen);
 	m_screen->set_raw(4.9152_MHz_XTAL, 40 * 8, 0, 32 * 8, 18 * 14, 0, 16 * 14);
