@@ -43,7 +43,7 @@
 #include "machine/timer.h"
 #include "machine/nsc810.h"
 #include "machine/6850acia.h"
-#include "machine/z8530.h"
+#include "machine/z80scc.h"
 #include "machine/mc14411.h"
 #include "bus/rs232/rs232.h"
 #include "bus/rs232/pty.h"
@@ -335,7 +335,7 @@ private:
 	required_device<beep_device> m_beep;
 	required_device<nsc810_device> m_iotimer;
 	required_device<acia6850_device> m_acia;
-	required_device<z8530_device> m_scc;
+	required_device<z80scc_device> m_scc;
 	required_device<mc14411_device> m_brg;
 	required_device<rs232_port_device> m_rs232;
 	uint8_t m_u208 = 0;  // U208 baud/mux latch (REMOTE board)
@@ -464,7 +464,7 @@ void hp4951b_state::io_map(address_map &map)
 	map(0x32, 0x33).mirror(0x04).rw(FUNC(hp4951b_state::acia_r), FUNC(hp4951b_state::acia_w));
 	// POD board: Z8530 SCC (0x80=A Ctrl, 0x81=B Ctrl, 0x82=A Data, 0x83=B Data)
 	// Mirror 0x7C for silly firmware engineers; provides INTACK\ vector via WR2
-	map(0x80, 0x83).mirror(0x7c).rw(m_scc, FUNC(z8530_device::read), FUNC(z8530_device::write));
+	map(0x80, 0x83).mirror(0x7c).rw(m_scc, FUNC(z80scc_device::read), FUNC(z80scc_device::write));
 	map(0x39, 0x3f).rw(FUNC(hp4951b_state::regs30_r), FUNC(hp4951b_state::regs30_w));
 
 	// TIC CLOCK (0x20-0x27): U404 8-bit counter, U304 latch (bits 0-5)
@@ -880,7 +880,7 @@ void hp4951b_state::hp4951b(machine_config &config)
 	m_acia->irq_handler().set(FUNC(hp4951b_state::acia_irq_w));
 	// POD board: Z8530 SCC for interrupt vector provider (INTACK\)
 	// Minimal: just logs WR2/WR9 writes to find the vector
-	SCC8530(config, m_scc, 0);
+	Z80SCC(config, m_scc, 0);
 	MC14411(config, m_brg, XTAL(1'843'200));
 	m_brg->out_f<3>().set(FUNC(hp4951b_state::brg_f_w<3>));
 	m_brg->out_f<5>().set(FUNC(hp4951b_state::brg_f_w<5>));
