@@ -70,6 +70,7 @@ public:
 		m_beep(*this, "beeper"),
 		m_iotimer(*this, "iotimer"),
 		m_acia(*this, "acia"),
+		m_scc(*this, "scc"),
 		m_brg(*this, "brg"),
 		m_rs232(*this, "rs232"),
 		m_mainram(*this, "mainram"),
@@ -464,7 +465,10 @@ void hp4951b_state::io_map(address_map &map)
 	map(0x32, 0x33).mirror(0x04).rw(FUNC(hp4951b_state::acia_r), FUNC(hp4951b_state::acia_w));
 	// POD board: Z8530 SCC (0x80=A Ctrl, 0x81=B Ctrl, 0x82=A Data, 0x83=B Data)
 	// Mirror 0x7C for silly firmware engineers; provides INTACK\ vector via WR2
-	map(0x80, 0x83).mirror(0x7c).rw(m_scc, FUNC(scc8530_device::read), FUNC(scc8530_device::write));
+	map(0x80, 0x80).mirror(0x7c).rw(m_scc, FUNC(scc8530_device::ca_r), FUNC(scc8530_device::ca_w));
+	map(0x81, 0x81).mirror(0x7c).rw(m_scc, FUNC(scc8530_device::cb_r), FUNC(scc8530_device::cb_w));
+	map(0x82, 0x82).mirror(0x7c).rw(m_scc, FUNC(scc8530_device::da_r), FUNC(scc8530_device::da_w));
+	map(0x83, 0x83).mirror(0x7c).rw(m_scc, FUNC(scc8530_device::db_r), FUNC(scc8530_device::db_w));
 	map(0x39, 0x3f).rw(FUNC(hp4951b_state::regs30_r), FUNC(hp4951b_state::regs30_w));
 
 	// TIC CLOCK (0x20-0x27): U404 8-bit counter, U304 latch (bits 0-5)
