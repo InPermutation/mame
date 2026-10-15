@@ -193,6 +193,11 @@ private:
 	// ACIA read/write wrappers with logging
 	uint8_t acia_r(offs_t offset);
 	void acia_w(offs_t offset, uint8_t data);
+	// SCC wrappers with logging (for WR2/WR9 vector tracking)
+	uint8_t scc_ca_r(offs_t offset);
+	void scc_ca_w(offs_t offset, uint8_t data);
+	uint8_t scc_cb_r(offs_t offset);
+	void scc_cb_w(offs_t offset, uint8_t data);
 	// Remote-connector side (rs232_port_device) callbacks
 	void rs232_rxd_w(int state) { m_rs232_rxd = state; update_remote_mux(); }
 	void rs232_cts_w(int state) { m_rs232_cts = state; update_remote_mux(); }
@@ -381,6 +386,28 @@ void hp4951b_state::acia_w(offs_t offset, uint8_t data)
 	m_acia->write(offset, data);
 }
 
+uint8_t hp4951b_state::scc_ca_r(offs_t offset)
+{
+	return m_scc->ca_r(offset);
+}
+
+void hp4951b_state::scc_ca_w(offs_t offset, uint8_t data)
+{
+	logerror("SCC A Ctrl write: %02X\n", data);
+	m_scc->ca_w(offset, data);
+}
+
+uint8_t hp4951b_state::scc_cb_r(offs_t offset)
+{
+	return m_scc->cb_r(offset);
+}
+
+void hp4951b_state::scc_cb_w(offs_t offset, uint8_t data)
+{
+	logerror("SCC B Ctrl write: %02X\n", data);
+	m_scc->cb_w(offset, data);
+}
+
 void hp4951b_state::mem_map(address_map &map)
 {
 	map(0x0000, 0x1fff).rom().region("maincpu", 0);
@@ -465,8 +492,8 @@ void hp4951b_state::io_map(address_map &map)
 	map(0x32, 0x33).mirror(0x04).rw(FUNC(hp4951b_state::acia_r), FUNC(hp4951b_state::acia_w));
 	// POD board: Z8530 SCC (0x80=A Ctrl, 0x81=B Ctrl, 0x82=A Data, 0x83=B Data)
 	// Mirror 0x7C for silly firmware engineers; provides INTACK\ vector via WR2
-	map(0x80, 0x80).mirror(0x7c).rw(m_scc, FUNC(scc8530_device::ca_r), FUNC(scc8530_device::ca_w));
-	map(0x81, 0x81).mirror(0x7c).rw(m_scc, FUNC(scc8530_device::cb_r), FUNC(scc8530_device::cb_w));
+	map(0x80, 0x80).mirror(0x7c).rw(FUNC(hp4951b_state::scc_ca_r), FUNC(hp4951b_state::scc_ca_w));
+	map(0x81, 0x81).mirror(0x7c).rw(FUNC(hp4951b_state::scc_cb_r), FUNC(hp4951b_state::scc_cb_w));
 	map(0x82, 0x82).mirror(0x7c).rw(m_scc, FUNC(scc8530_device::da_r), FUNC(scc8530_device::da_w));
 	map(0x83, 0x83).mirror(0x7c).rw(m_scc, FUNC(scc8530_device::db_r), FUNC(scc8530_device::db_w));
 	map(0x39, 0x3f).rw(FUNC(hp4951b_state::regs30_r), FUNC(hp4951b_state::regs30_w));
